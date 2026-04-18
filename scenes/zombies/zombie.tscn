@@ -1,0 +1,32 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/zombies/zombie.gd" id="1_zombie"]
+
+[sub_resource type="CircleShape2D" id="SubResource_body"]
+radius = 14.0
+
+[sub_resource type="CircleShape2D" id="SubResource_detect"]
+radius = 200.0
+
+[sub_resource type="CircleShape2D" id="SubResource_attack"]
+radius = 35.0
+
+[node name="Zombie" type="CharacterBody2D" groups=["zombies"]]
+script = ExtResource("1_zombie")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("SubResource_body")
+
+[node name="DetectionArea" type="Area2D" parent="."]
+collision_layer = 0
+collision_mask = 1
+
+[node name="DetectionShape" type="CollisionShape2D" parent="DetectionArea"]
+shape = SubResource("SubResource_detect")
+
+[node name="AttackArea" type="Area2D" parent="."]
+collision_layer = 0
+collision_mask = 1
+
+[node name="AttackShape" type="CollisionShape2D" parent="AttackArea"]
+shape = SubResource("SubResource_attack")

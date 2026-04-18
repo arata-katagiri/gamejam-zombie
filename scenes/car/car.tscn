@@ -1,0 +1,15 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/car/car.gd" id="1_car"]
+
+[sub_resource type="RectangleShape2D" id="SubResource_interact"]
+size = Vector2(100, 60)
+
+[node name="Car" type="Node2D" groups=["car"]]
+script = ExtResource("1_car")
+
+[node name="InteractionArea" type="Area2D" parent="."]
+collision_layer = 0
+
+[node name="InteractionShape" type="CollisionShape2D" parent="InteractionArea"]
+shape = SubResource("SubResource_interact")
