@@ -22,7 +22,8 @@ func setup(difficulty: int):
 	_add_static_walls(rect_bot)
 	
 	if roof_textures.size() > 0:
-		_spawn_fading_roof(rect_top, roof_textures[2 % roof_textures.size()], true)
+		var door_info_top = {"has_door": true, "custom_local_center": Vector2(490, 212)}
+		_spawn_fading_roof(rect_top, roof_textures[2 % roof_textures.size()], true, door_info_top)
 		_spawn_fading_roof(rect_bot, roof_textures[3 % roof_textures.size()], true)
 	
 	for bed_pos in bed_positions:

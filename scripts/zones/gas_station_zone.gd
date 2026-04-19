@@ -21,7 +21,8 @@ func setup(difficulty: int):
 	_add_static_walls(rect_station, Rect2(station_x + 200, 580, 40, 80))
 	
 	if roof_textures.size() > 0:
-		_spawn_fading_roof(rect_station, roof_textures[4 % roof_textures.size()], true)
+		var door_info_station = {"has_door": true, "custom_local_center": Vector2(220, 120)}
+		_spawn_fading_roof(rect_station, roof_textures[4 % roof_textures.size()], true, door_info_station)
 	
 	for pump_pos in pump_positions:
 		_add_static_box(Rect2(pump_pos.x - 12, pump_pos.y - 25, 24, 50))

@@ -8,7 +8,7 @@ var restore_amount: float = 25.0
 
 var player_nearby: bool = false
 var interaction_label: Label = null
-var weapon_sprite: Sprite2D = null
+var item_sprite: Sprite2D = null
 
 func _ready():
 	set_collision_layer(0)
@@ -17,20 +17,43 @@ func _ready():
 	body_exited.connect(_on_body_exited)
 	
 	if type == Type.GUN or type == Type.MELEE or type == Type.AMMO:
-		weapon_sprite = Sprite2D.new()
-		weapon_sprite.texture = load("res://Weapon.png")
-		if weapon_sprite.texture:
-			weapon_sprite.region_enabled = true
+		item_sprite = Sprite2D.new()
+		item_sprite.texture = load("res://Weapon.png")
+		if item_sprite.texture:
+			item_sprite.region_enabled = true
 			if type == Type.GUN:
-				weapon_sprite.region_rect = Rect2(0, 0, 32, 16)
+				item_sprite.region_rect = Rect2(0, 0, 32, 16)
 			elif type == Type.MELEE:
-				weapon_sprite.region_rect = Rect2(32, 0, 32, 16)
+				item_sprite.region_rect = Rect2(32, 0, 32, 16)
 			elif type == Type.AMMO:
-				weapon_sprite.region_rect = Rect2(0, 16, 16, 16) # Approximate ammo box in sheet
-			add_child(weapon_sprite)
+				item_sprite.region_rect = Rect2(0, 16, 16, 16)
+			add_child(item_sprite)
+	else:
+		var tex_path: String = ""
+		if type == Type.FOOD:
+			tex_path = "res://collectible_sprites/food1.png"
+			if randf() > 0.5 and ResourceLoader.exists("res://collectible_sprites/food2.png"):
+				tex_path = "res://collectible_sprites/food2.png"
+		elif type == Type.DRINK:
+			tex_path = "res://collectible_sprites/bottle_of_water.png"
+		elif type == Type.MEDKIT:
+			tex_path = "res://collectible_sprites/medkit.png"
+		elif type == Type.FUEL:
+			tex_path = "res://collectible_sprites/fuel.png"
+			
+		if tex_path != "":
+			var tex = load(tex_path)
+			if tex:
+				item_sprite = Sprite2D.new()
+				item_sprite.texture = tex
+				var max_dim = max(tex.get_width(), tex.get_height())
+				if max_dim > 20.0:
+					var sf = 20.0 / float(max_dim)
+					item_sprite.scale = Vector2(sf, sf)
+				add_child(item_sprite)
 
 func _draw():
-	if weapon_sprite != null: 
+	if item_sprite != null: 
 		return # Let the custom Sprite2D handle rendering!
 		
 	match type:

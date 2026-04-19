@@ -23,7 +23,8 @@ func setup(difficulty: int):
 		_add_static_box(shelf)
 	
 	if roof_textures.size() > 0:
-		_spawn_fading_roof(rect_top, roof_textures[0 % roof_textures.size()], true)
+		var door_info_top = {"has_door": true, "custom_local_center": Vector2(480, 205)}
+		_spawn_fading_roof(rect_top, roof_textures[0 % roof_textures.size()], true, door_info_top)
 		_spawn_fading_roof(rect_bot, roof_textures[1 % roof_textures.size()], true)
 	_spawn_zombies(difficulty)
 	_spawn_collectibles()

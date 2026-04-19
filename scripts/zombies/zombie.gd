@@ -1,18 +1,20 @@
 extends CharacterBody2D
 
-enum State { IDLE, PATROL, CHASE, ATTACK, DEAD }
+enum State { IDLE, PATROL, HUNT, ATTACK, DEAD }
 
 const PATROL_SPEED := 50.0
-const CHASE_SPEED := 120.0
-const ATTACK_DAMAGE := 10.0
-const ATTACK_COOLDOWN := 1.0
+var base_hunt_speed := 110.0
+var final_hunt_speed := 220.0
+var base_damage := 10.0
+var final_damage := 30.0
+const ATTACK_COOLDOWN := 0.5 
 
 var current_state: State = State.IDLE
 var health: float = 50.0
 var attack_timer: float = 0.0
 var patrol_direction: Vector2 = Vector2.RIGHT
 var patrol_timer: float = 0.0
-var player_ref: CharacterBody2D = null
+var hunt_target: Node2D = null
 
 var zombie_sprites := [
 	"res://Wild Zombie/",
@@ -34,16 +36,17 @@ var fps: float = 10.0
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
 
 func _ready():
+	add_to_group("zombie")
 	set_collision_layer(4) # Layer 3 for zombies
 	set_collision_mask(1)  # Only collide with Environment layer (1)
 	
+	# Instead of just relying on rigid Area2D masks, we will manually check radius in IDLE/PATROL
+	# to seamlessly support targeting the Car without needing complex collision layers.
+	# We still keep detection_area roughly configured if needed by other systems.
 	detection_area.set_collision_layer(0)
-	detection_area.set_collision_mask(2) # Detect Player (Layer 2)
+	detection_area.set_collision_mask(2)
 	attack_area.set_collision_layer(0)
-	attack_area.set_collision_mask(2)    # Detect Player (Layer 2)
-
-	detection_area.body_entered.connect(_on_detection_body_entered)
-	detection_area.body_exited.connect(_on_detection_body_exited)
+	attack_area.set_collision_mask(2)
 	patrol_timer = randf_range(2.0, 5.0)
 	
 	# Load random realistic sprite
@@ -73,10 +76,12 @@ func _physics_process(delta: float):
 	match current_state:
 		State.IDLE:
 			_process_idle(delta)
+			_check_aggro()
 		State.PATROL:
 			_process_patrol(delta)
-		State.CHASE:
-			_process_chase(delta)
+			_check_aggro()
+		State.HUNT:
+			_process_hunt(delta)
 		State.ATTACK:
 			_process_attack(delta)
 
@@ -91,7 +96,7 @@ func _handle_animation(delta: float):
 		target_tex = dead_texture
 	elif current_state == State.ATTACK:
 		target_tex = attack_texture
-	elif current_state == State.CHASE or current_state == State.PATROL:
+	elif current_state == State.HUNT or current_state == State.PATROL:
 		target_tex = walk_texture
 		
 	if sprite.texture != target_tex:
@@ -133,28 +138,70 @@ func _process_patrol(delta: float):
 		current_state = State.IDLE
 		patrol_timer = randf_range(1.0, 3.0)
 
-func _process_chase(_delta: float):
-	if not is_instance_valid(player_ref):
+func get_hunting_speed() -> float:
+	var progress_factor = clamp(GameManager.distance_traveled / 20000.0, 0.0, 1.0)
+	var current_base = lerp(base_hunt_speed, final_hunt_speed, progress_factor)
+	var speed = current_base * GameManager.get_zombie_speed_modifier()
+	# The Lunge mechanic
+	if is_instance_valid(hunt_target) and global_position.distance_to(hunt_target.global_position) < 120.0:
+		speed *= 2.0
+	return speed
+
+func get_attack_damage() -> float:
+	var progress_factor = clamp(GameManager.distance_traveled / 20000.0, 0.0, 1.0)
+	return lerp(base_damage, final_damage, progress_factor)
+
+func _check_aggro():
+	var car = get_tree().get_first_node_in_group("car")
+	var player = get_tree().get_first_node_in_group("player")
+	
+	if car and car.is_traveling and not car.is_broken:
+		if global_position.distance_to(car.global_position) < 400.0:
+			start_hunt(car)
+			return
+			
+	if player and not player.is_dead and player.current_state != 6: # State.IN_CAR is idx 6
+		if global_position.distance_to(player.global_position) < 350.0:
+			start_hunt(player)
+
+func start_hunt(target: Node2D):
+	if current_state == State.DEAD or current_state == State.HUNT or current_state == State.ATTACK:
+		return
+	hunt_target = target
+	current_state = State.HUNT
+	
+	# Aggravator Chaining
+	var zombies = get_tree().get_nodes_in_group("zombie")
+	for z in zombies:
+		if z != self and is_instance_valid(z) and not (z.current_state in [State.HUNT, State.ATTACK, State.DEAD]):
+			if global_position.distance_to(z.global_position) < 400.0:
+				if z.has_method("start_hunt"):
+					z.start_hunt(target)
+
+func _process_hunt(_delta: float):
+	if not is_instance_valid(hunt_target):
 		current_state = State.IDLE
 		return
 
-	var direction: Vector2 = (player_ref.global_position - global_position).normalized()
-	velocity = direction * CHASE_SPEED
+	var direction: Vector2 = (hunt_target.global_position - global_position).normalized()
+	velocity = direction * get_hunting_speed()
 
-	var distance: float = global_position.distance_to(player_ref.global_position)
-	if distance < 40.0:
+	var distance: float = global_position.distance_to(hunt_target.global_position)
+	var attack_range = 75.0 if hunt_target.is_in_group("car") else 40.0
+	if distance < attack_range:
 		current_state = State.ATTACK
 
 func _process_attack(_delta: float):
 	velocity = Vector2.ZERO
 
-	if not is_instance_valid(player_ref):
+	if not is_instance_valid(hunt_target):
 		current_state = State.IDLE
 		return
 
-	var distance: float = global_position.distance_to(player_ref.global_position)
-	if distance > 50.0:
-		current_state = State.CHASE
+	var distance: float = global_position.distance_to(hunt_target.global_position)
+	var max_range = 80.0 if hunt_target.is_in_group("car") else 50.0
+	if distance > max_range:
+		current_state = State.HUNT
 		return
 
 	if attack_timer <= 0.0:
@@ -162,22 +209,8 @@ func _process_attack(_delta: float):
 		_deal_damage()
 
 func _deal_damage():
-	for body: Node2D in attack_area.get_overlapping_bodies():
-		if body.is_in_group("player") and body.has_method("take_damage"):
-			body.take_damage(ATTACK_DAMAGE)
-
-func _on_detection_body_entered(body: Node2D):
-	if current_state == State.DEAD: return
-	if body.is_in_group("player"):
-		player_ref = body as CharacterBody2D
-		current_state = State.CHASE
-
-func _on_detection_body_exited(body: Node2D):
-	if current_state == State.DEAD: return
-	if body.is_in_group("player"):
-		player_ref = null
-		if current_state == State.CHASE or current_state == State.ATTACK:
-			current_state = State.IDLE
+	if is_instance_valid(hunt_target) and hunt_target.has_method("take_damage"):
+		hunt_target.take_damage(get_attack_damage())
 
 func take_damage(amount: float):
 	if current_state == State.DEAD: return

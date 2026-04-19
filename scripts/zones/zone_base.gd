@@ -255,18 +255,22 @@ func _draw_building(bld: Dictionary, wall_color: Color, win_color: Color, door_c
 	draw_rect(Rect2(pos.x + sz.x - wall_thickness, pos.y, wall_thickness, sz.y), wall_color) # Right
 	draw_rect(Rect2(pos.x, pos.y + sz.y - wall_thickness, sz.x, wall_thickness), wall_color)
 	
-	var door_w: float = 40.0
+	var door_w: float = 60.0
 	if has_door:
 		# Carve out the door from the wall and draw the open door panel
 		if door_side == "front":
 			var gap_x: float = pos.x + sz.x * 0.5 - door_w * 0.5
 			_draw_floor_area(Rect2(gap_x, pos.y + sz.y - wall_thickness, door_w, wall_thickness))
-			draw_rect(Rect2(gap_x, pos.y + sz.y - wall_thickness - door_w, wall_thickness * 0.5, door_w), door_color)
+			
+			# Door swung fully open (180 degrees) flat against the exterior wall
+			draw_rect(Rect2(gap_x - door_w, pos.y + sz.y, door_w, 12), door_color)
 		else:
 			var gap_y: float = pos.y + sz.y * 0.5 - door_w * 0.5
 			var gap_x: float = pos.x + sz.x - wall_thickness
 			_draw_floor_area(Rect2(gap_x, gap_y, wall_thickness, door_w))
-			draw_rect(Rect2(gap_x - door_w, gap_y, door_w, wall_thickness * 0.5), door_color)
+			
+			# Door swung fully open (180 degrees) flat against the right exterior wall
+			draw_rect(Rect2(gap_x + wall_thickness, gap_y - door_w, 12, door_w), door_color)
 
 func _draw_tiled_texture(tex: Texture2D, rect: Rect2):
 	if not tex: return
@@ -307,7 +311,7 @@ func _create_building_collisions(bld: Dictionary):
 	
 	# Right Wall Configuration
 	if has_door and door_side == "side":
-		var door_w: float = 40.0
+		var door_w: float = 60.0
 		var h1: float = sz.y * 0.5 - door_w * 0.5
 		rects_to_collide.append(Rect2(pos.x + sz.x - wall_thickness, pos.y, wall_thickness, h1))
 		rects_to_collide.append(Rect2(pos.x + sz.x - wall_thickness, pos.y + h1 + door_w, wall_thickness, sz.y - (h1 + door_w)))
@@ -316,7 +320,7 @@ func _create_building_collisions(bld: Dictionary):
 		
 	# Bottom Wall Configuration
 	if has_door and door_side == "front":
-		var door_w: float = 40.0
+		var door_w: float = 60.0
 		var w1: float = sz.x * 0.5 - door_w * 0.5
 		rects_to_collide.append(Rect2(pos.x, pos.y + sz.y - wall_thickness, w1, wall_thickness))
 		rects_to_collide.append(Rect2(pos.x + w1 + door_w, pos.y + sz.y - wall_thickness, sz.x - (w1 + door_w), wall_thickness))
@@ -333,7 +337,7 @@ func _create_building_collisions(bld: Dictionary):
 		
 	add_child(static_body)
 
-func _spawn_fading_roof(rect: Rect2, tex: Texture2D, is_tiled: bool = false):
+func _spawn_fading_roof(rect: Rect2, tex: Texture2D, is_tiled: bool = false, door_info: Dictionary = {}):
 	if not tex: return
 	
 	var node = Node2D.new()
@@ -378,6 +382,53 @@ func _spawn_fading_roof(rect: Rect2, tex: Texture2D, is_tiled: bool = false):
 	drop_shadow.z_index = -1
 	node.add_child(drop_shadow)
 	
+	if door_info.get("has_door", false):
+		var shader = Shader.new()
+		shader.code = """
+shader_type canvas_item;
+
+uniform bool has_door = false;
+uniform vec2 door_center;
+uniform float door_radius = 50.0;
+uniform float fade_min = 0.2;
+
+varying vec2 local_pos;
+
+void vertex() {
+	local_pos = VERTEX;
+}
+
+void fragment() {
+	vec4 c = texture(TEXTURE, UV);
+	if (has_door) {
+		float dist = distance(local_pos, door_center);
+		if (dist < door_radius) {
+			float alpha_mult = mix(fade_min, 1.0, smoothstep(0.0, 1.0, dist / door_radius));
+			c.a *= alpha_mult;
+		}
+	}
+	COLOR = c;
+}
+"""
+		var mat = ShaderMaterial.new()
+		mat.shader = shader
+		mat.set_shader_parameter("has_door", true)
+		mat.set_shader_parameter("door_radius", 55.0)
+		mat.set_shader_parameter("fade_min", 0.0)
+		
+		var door_side = door_info.get("door_side", "front")
+		var door_center = Vector2.ZERO
+		
+		if door_info.has("custom_local_center"):
+			door_center = door_info["custom_local_center"]
+		elif door_side == "front":
+			door_center = Vector2(rect.size.x * 0.5, rect.size.y)
+		elif door_side == "side":
+			door_center = Vector2(rect.size.x, rect.size.y * 0.5)
+			
+		mat.set_shader_parameter("door_center", door_center)
+		sprite.material = mat
+
 	node.add_child(sprite)
 	node.add_child(area)
 	add_child(node)
@@ -389,7 +440,7 @@ func _create_building_roof(bld: Dictionary):
 	if roof_textures.size() > 0:
 		var tex_idx = abs(int(pos.x * 123 + pos.y)) % roof_textures.size()
 		var tex = roof_textures[tex_idx]
-		_spawn_fading_roof(Rect2(pos, sz), tex, true)
+		_spawn_fading_roof(Rect2(pos, sz), tex, true, bld)
 
 func _create_prop_collisions(prop_arr: Array[Dictionary]):
 	for prop in prop_arr:

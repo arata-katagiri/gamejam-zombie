@@ -51,7 +51,7 @@ func _create_colliders(box_size: Vector2):
 	static_body.set_collision_layer(1)
 	static_body.set_collision_mask(0)
 	var st_shape = RectangleShape2D.new()
-	# Cover the entire width and the bottom access area
+	# Cover the entire width, leave a gap at bottom
 	st_shape.size = Vector2(shape_size.x, shape_size.y * 0.95)
 	var st_coll = CollisionShape2D.new()
 	st_coll.shape = st_shape
@@ -85,7 +85,14 @@ func _create_colliders(box_size: Vector2):
 	occ.occluder = poly
 	add_child(occ)
 
-	# Area for detecting entry
+	# Visible Door for clear entrance
+	var door_visual = ColorRect.new()
+	door_visual.color = Color(0.18, 0.12, 0.08)
+	door_visual.size = Vector2(40, 50)
+	door_visual.position = Vector2(shape_size.x * 0.5 - 20, shape_size.y - 50)
+	add_child(door_visual)
+
+	# Area for registering player being INSIDE the entire building footprint
 	base_area = Area2D.new()
 	base_area.set_collision_layer(0)
 	base_area.set_collision_mask(2)
@@ -97,8 +104,51 @@ func _create_colliders(box_size: Vector2):
 	base_area.add_child(coll)
 	add_child(base_area)
 	
-	base_area.body_entered.connect(_on_player_entered)
+	# Only use base_area for exits to prevent falling out, but use specific areas for entering
 	base_area.body_exited.connect(_on_player_exited)
+	
+	# Specific Entry Area via Door
+	var door_area = Area2D.new()
+	door_area.set_collision_layer(0)
+	door_area.set_collision_mask(2)
+	var d_coll = CollisionShape2D.new()
+	var d_shape = RectangleShape2D.new()
+	d_shape.size = Vector2(40, 50)
+	d_coll.shape = d_shape
+	d_coll.position = door_visual.position + Vector2(20, 25)
+	door_area.add_child(d_coll)
+	add_child(door_area)
+	door_area.body_entered.connect(_on_player_entered)
+	
+	# Specific Window Interaction via Attack
+	var win_static = StaticBody2D.new()
+	win_static.set_collision_layer(4) # Destructible logic layer
+	win_static.set_collision_mask(0)
+	var ws_coll = CollisionShape2D.new()
+	var ws_shape = RectangleShape2D.new()
+	ws_shape.size = Vector2(100, 30)
+	ws_coll.shape = ws_shape
+	ws_coll.position = window_visuals.position + Vector2(50, 10)
+	win_static.add_child(ws_coll)
+	add_child(win_static)
+	
+	var script = GDScript.new()
+	script.source_code = "extends StaticBody2D\nvar parent_bld\nfunc take_damage(amt):\n\tif parent_bld: parent_bld.break_windows()\n"
+	script.reload()
+	win_static.set_script(script)
+	win_static.set("parent_bld", self)
+	
+	# Area for jumping through broken windows
+	window_entry_area = Area2D.new()
+	window_entry_area.set_collision_layer(0)
+	window_entry_area.set_collision_mask(2)
+	var we_coll = CollisionShape2D.new()
+	var we_shape = RectangleShape2D.new()
+	we_shape.size = Vector2(100, 40)
+	we_coll.shape = we_shape
+	we_coll.position = window_visuals.position + Vector2(50, 10)
+	window_entry_area.add_child(we_coll)
+	add_child(window_entry_area)
 
 	# --- Stairs Area ---
 	stairs_area = Area2D.new()
@@ -139,14 +189,46 @@ func _get_layer_num(path: String) -> int:
 		return int(parts[1].split(".")[0])
 	return 0
 
+var window_visuals: Node2D
+var windows_broken: bool = false
+var window_entry_area: Area2D
+
+func break_windows():
+	if windows_broken: return
+	windows_broken = true
+	# Visually simulate shattered glass
+	for ch in window_visuals.get_children():
+		if ch is ColorRect:
+			ch.color = Color(0.1, 0.1, 0.15, 0.9)
+	SignalsBus.road_event_triggered.emit("Windows shattered")
+
+func _process(_delta: float):
+	if windows_broken and is_instance_valid(window_entry_area) and player_inside == null:
+		var overlaps = window_entry_area.get_overlapping_bodies()
+		for b in overlaps:
+			if b.is_in_group("player") and b.get("jump_timer") > 0.0:
+				_on_player_entered(b)
+				# Pull player inside structurally to prevent immediate pop-out
+				b.global_position.y -= 40
+				break
+
+var floor_contents: Dictionary = {}
+var interior_nodes: Array[Node2D] = []
+
 func _on_player_entered(body: Node2D):
-	if body.is_in_group("player"):
+	if body.is_in_group("player") and player_inside == null:
 		player_inside = body as CharacterBody2D
 		current_floor = 5 # Start on ground level visually
 		_update_interior_view()
 		
-		# Generate the first floor content immediately!
-		if interior_nodes.size() == 0:
+		# Load or generate the first floor content!
+		if floor_contents.has(current_floor):
+			interior_nodes = floor_contents[current_floor]
+			for n in interior_nodes:
+				if is_instance_valid(n) and not n.get_parent():
+					add_child(n)
+		else:
+			interior_nodes.clear()
 			_spawn_interior_content(current_floor)
 
 func _on_player_exited(body: Node2D):
@@ -156,15 +238,32 @@ func _on_player_exited(body: Node2D):
 
 func _unhandled_input(event: InputEvent):
 	if player_inside != null and player_on_stairs and event.is_action_pressed("interact"):
+		# Cache current floor
+		var valid_current: Array[Node2D] = []
+		for n in interior_nodes:
+			if is_instance_valid(n):
+				if n.get_parent() == self:
+					remove_child(n)
+				valid_current.append(n)
+		floor_contents[current_floor] = valid_current
+		
 		current_floor += 5
 		if current_floor >= layers.size():
 			current_floor = 5 # Loop back
 		_update_interior_view()
-		_spawn_interior_content(current_floor)
+		
+		# Load or gen new floor
+		if floor_contents.has(current_floor):
+			interior_nodes = floor_contents[current_floor]
+			for n in interior_nodes:
+				if is_instance_valid(n) and not n.get_parent():
+					add_child(n)
+		else:
+			interior_nodes.clear()
+			_spawn_interior_content(current_floor)
+			
 		SignalsBus.road_event_triggered.emit("Floor %d" % (current_floor / 5))
 		get_viewport().set_input_as_handled()
-
-var interior_nodes: Array[Node2D] = []
 
 func _spawn_interior_content(floor_z: int):
 	var rng = RandomNumberGenerator.new()
@@ -249,10 +348,15 @@ func _restore_exterior_view():
 		stairs_visual.z_as_relative = true
 		stairs_visual.z_index = 0
 		
-	# Hide interior nodes so they don't visually clip out over the 2D roof
+	# Hide interior nodes and remove them from tree to freeze physics
+	var valid_nodes: Array[Node2D] = []
 	for node in interior_nodes:
 		if is_instance_valid(node):
 			node.visible = false
+			if node.get_parent() == self:
+				remove_child(node)
+			valid_nodes.append(node)
+	floor_contents[current_floor] = valid_nodes
 	
 	blackout_rect.visible = false
 	for i in range(layers.size()):

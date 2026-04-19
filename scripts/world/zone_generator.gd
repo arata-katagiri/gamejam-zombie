@@ -19,10 +19,14 @@ static func generate_buildings(count_range: Vector2i, rng: RandomNumberGenerator
 		if i >= regions.size():
 			break
 		var region: Rect2 = regions[i]
-		var bld_w: float = rng.randf_range(region.size.x * 0.5, region.size.x * 0.9)
-		var bld_h: float = rng.randf_range(region.size.y * 0.4, region.size.y * 0.85)
-		var bld_x: float = region.position.x + rng.randf_range(0, region.size.x - bld_w)
-		var bld_y: float = region.position.y + rng.randf_range(0, region.size.y - bld_h)
+		var bld_w: float = rng.randf_range(region.size.x * 0.4, region.size.x * 0.95)
+		var bld_h: float = rng.randf_range(region.size.y * 0.3, region.size.y * 0.9)
+		
+		# Organic overlap and offsets
+		var x_offset = rng.randf_range(-15.0, 15.0)
+		var y_offset = rng.randf_range(-15.0, 15.0)
+		var bld_x: float = region.position.x + rng.randf_range(0, region.size.x - bld_w) + x_offset
+		var bld_y: float = region.position.y + rng.randf_range(0, region.size.y - bld_h) + y_offset
 
 		var window_count: int = rng.randi_range(1, max(1, int(bld_w / 45)))
 		var has_door: bool = true

@@ -38,7 +38,6 @@ func _ready():
 		"camp": camp_scene,
 	}
 
-	SignalsBus.car_travel_ended.connect(_on_car_travel_ended)
 	_spawn_initial_zones()
 	
 	_day_night_mod = CanvasModulate.new()
@@ -65,16 +64,29 @@ func _process(delta: float):
 	var t = GameManager.time_of_day
 	var dark_factor = 0.0
 	if t < 6.0 or t > 19.0:
-		dark_factor = 0.85 # Max darkness
+		dark_factor = 1.0 # Pitch black
 	elif t > 17.0 and t <= 19.0:
-		dark_factor = lerp(0.0, 0.85, (t - 17.0) / 2.0)
+		dark_factor = lerp(0.0, 1.0, (t - 17.0) / 2.0)
 	elif t >= 6.0 and t < 8.0:
-		dark_factor = lerp(0.85, 0.0, (t - 6.0) / 2.0)
+		dark_factor = lerp(1.0, 0.0, (t - 6.0) / 2.0)
 	
 	# Interpolate lighting
-	var color_light = Color(1.0, 1.0, 1.0)
-	var color_dark = Color(0.1, 0.1, 0.25) # Deep night blue
+	var color_light = Color(0.4, 0.4, 0.45) # Foggy daytime
+	var color_dark = Color(0.01, 0.01, 0.03) # Deep pitch black
 	_day_night_mod.color = color_light.lerp(color_dark, dark_factor)
+	
+	var target_x = 0.0
+	
+	var car = get_parent().get_node_or_null("Car")
+	if car:
+		target_x = max(target_x, car.global_position.x)
+		
+	var player = get_tree().get_first_node_in_group("player")
+	if player:
+		target_x = max(target_x, player.global_position.x)
+		
+	if target_x > next_zone_position - (ZONE_SPACING * 3):
+		_trigger_next_zone()
 
 func _spawn_initial_zones():
 	# Start with a road zone, then location, then road, then location
@@ -84,7 +96,7 @@ func _spawn_initial_zones():
 	_spawn_next_location()
 	_spawn_zone("road")
 
-func _on_car_travel_ended():
+func _trigger_next_zone():
 	_cleanup_old_zones()
 
 	# Check for biome transition
@@ -136,6 +148,10 @@ func _roll_road_event():
 	var event_weights: Dictionary = BiomeData.get_road_event_weights(GameManager.current_biome)
 	var event: String = ZoneGenerator.pick_weighted_zone(event_weights, GameManager.world_rng)
 
+	# Inject Bottleneck Horde
+	if GameManager.world_rng.randf() < 0.40: # Increased to 40% so it occurs more reliably
+		event = "bottleneck_horde"
+
 	if event != "nothing":
 		pending_road_event = event
 		SignalsBus.road_event_triggered.emit(event)
@@ -175,11 +191,41 @@ func _apply_road_event(event: String):
 			pass
 		"toxic_puddle":
 			pass
+		"bottleneck_horde":
+			var horde_x = next_zone_position - (ZONE_SPACING * 1.5) # Spawns much closer to the player 
+			var is_road = (GameManager.world_rng.randf() < 0.70)
+			var zombie_scene = preload("res://scenes/zombies/zombie.tscn")
+			var health_mod = GameManager.get_zombie_health_modifier()
+			
+			var count = GameManager.world_rng.randi_range(10, 15)
+			if GameManager.distance_traveled > 5000.0:
+				var scale_ratio = 1.0 + (GameManager.distance_traveled - 5000.0) / 10000.0
+				count = int(count * min(3.5, scale_ratio)) # Up to 3.5x more zombies deep into the run
+			
+			var is_great_wall = is_road and GameManager.world_rng.randf() < 0.40 # 40% chance of a Wall
+			
+			for i in range(count):
+				var z_x = horde_x + GameManager.world_rng.randf_range(-150, 150)
+				var z_y = 0.0
+				
+				if is_great_wall:
+					z_x = horde_x + GameManager.world_rng.randf_range(-20, 20)
+					z_y = 280.0 + (160.0 * (float(i) / max(1.0, float(count - 1))))
+				elif is_road:
+					z_y = GameManager.world_rng.randf_range(280, 440)
+				else: # Spawns in fields
+					z_y = GameManager.world_rng.randf_range(100, 250) if GameManager.world_rng.randf() < 0.5 else GameManager.world_rng.randf_range(470, 600)
+				
+				var zombie = zombie_scene.instantiate()
+				zombie.position = Vector2(z_x, z_y)
+				if zombie.has_method("set_difficulty"):
+					zombie.set_difficulty(health_mod)
+				add_child(zombie)
 	pending_road_event = ""
 
 ## Cleans up old zones behind the player.
 func _cleanup_old_zones():
-	while active_zones.size() > 6:
+	while active_zones.size() > 8:
 		var old_zone: Node2D = active_zones.pop_front()
 		if is_instance_valid(old_zone):
 			old_zone.queue_free()

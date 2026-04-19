@@ -9,6 +9,7 @@ var event_label: Label
 var player_stats: Node = null
 var game_over_shown: bool = false
 var event_display_timer: float = 0.0
+var static_overlay: ColorRect
 
 var fuel_bar: ProgressBar
 var thirst_bar: ProgressBar
@@ -19,8 +20,11 @@ var inv_labels: Dictionary = {}
 var inv_title_label: Label
 
 func _ready():
+	add_to_group("hud")
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	_build_ui()
+	_create_static_overlay()
 	await get_tree().process_frame
 	var player: Node = get_tree().get_first_node_in_group("player")
 	if player:
@@ -132,6 +136,7 @@ func _on_road_event(event_type: String):
 		"sandstorm": display_name = "🌪 Sandstorm!"
 		"fallen_tree": display_name = "🌲 Fallen tree on road"
 		"toxic_puddle": display_name = "☢ Toxic waste!"
+		"bottleneck_horde": display_name = "❗ HORDE BLOCKADE AHEAD!"
 		_: display_name = event_type
 	_show_event(display_name)
 
@@ -143,6 +148,31 @@ func _show_event(text: String):
 		event_label.text = text
 		event_display_timer = 3.0
 
+func _create_static_overlay():
+	static_overlay = ColorRect.new()
+	static_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	static_overlay.color = Color(1, 1, 1, 0)
+	
+	var shader = Shader.new()
+	shader.code = """
+shader_type canvas_item;
+uniform float intensity = 0.0;
+void fragment() {
+	float r = fract(sin(dot(UV.xy*TIME, vec2(12.9898,78.233))) * 43758.5453);
+	COLOR = vec4(vec3(r), intensity);
+}
+"""
+	var mat = ShaderMaterial.new()
+	mat.shader = shader
+	static_overlay.material = mat
+	static_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(static_overlay)
+
+func set_static_intensity(intensity: float):
+	if static_overlay and static_overlay.material:
+		var clamped_intensity = clamp(intensity, 0.0, 0.4) # Max 40% opacity
+		static_overlay.material.set_shader_parameter("intensity", clamped_intensity)
+
 var inv_cells: Array[Dictionary] = []
 
 func _use_item(idx: int):
@@ -150,8 +180,15 @@ func _use_item(idx: int):
 	var item_name = GameManager.player_inventory[idx]
 	
 	if item_name == "battery" and GameManager.has_flashlight: return # Prevent wasting battery
-	if item_name == "scrap": return # Cannot consume scrap
 	
+	if item_name == "scrap":
+		var car = get_tree().get_first_node_in_group("car")
+		if car and car.player_nearby and car.durability < 100.0:
+			car.repair(25.0)
+			SignalsBus.road_event_triggered.emit("Repaired Car: HP at %d%%" % int(car.durability))
+		else:
+			return # Cannot consume scrap
+			
 	GameManager.player_inventory.remove_at(idx)
 	
 	var player = get_tree().get_first_node_in_group("player")
@@ -161,7 +198,8 @@ func _use_item(idx: int):
 		"food":
 			if stats: stats.feed(25.0)
 		"drink":
-			if stats: stats.restore_energy(25.0)
+			GameManager.player_thirst = min(GameManager.max_thirst, GameManager.player_thirst + 40.0)
+			if stats: stats.stats_changed.emit()
 		"medkit":
 			if stats: stats.heal(40.0)
 		"fuel":
@@ -352,4 +390,5 @@ func _update_bars():
 		return
 	health_bar.value = player_stats.get_health_percent() * 100.0
 	hunger_bar.value = player_stats.get_hunger_percent() * 100.0
+	thirst_bar.value = player_stats.get_thirst_percent() * 100.0
 	energy_bar.value = player_stats.get_energy_percent() * 100.0

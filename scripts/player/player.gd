@@ -156,10 +156,14 @@ func _physics_process(delta: float):
 			set_collision_mask_value(1, true)
 
 		_handle_weapon_switch()
-		_handle_movement()
+		_handle_movement(delta)
 		_handle_attack(delta)
 		_update_state()
 		move_and_slide()
+		
+		# Allow distance traveled progression while walking on foot entirely 
+		if current_state != State.IN_CAR and velocity.x > 0:
+			GameManager.distance_traveled += velocity.x * delta
 
 		if camera_shake_timer > 0.0:
 			camera_shake_timer -= delta
@@ -207,7 +211,7 @@ func shake_camera(intensity: float, duration: float = 0.15):
 	camera_shake_intensity = intensity
 	camera_shake_timer = duration
 
-func _handle_movement():
+func _handle_movement(delta: float):
 	if current_state == State.ATTACKING or hurt_timer > 0.0:
 		velocity = Vector2.ZERO
 		return
@@ -219,6 +223,10 @@ func _handle_movement():
 
 	if input.length() > 0:
 		var is_running = Input.is_key_pressed(KEY_SHIFT)
+		if is_running:
+			if not stats.use_energy(15.0 * delta):
+				is_running = false
+		
 		velocity = input.normalized() * (RUN_SPEED if is_running else WALK_SPEED)
 		if input.x != 0.0:
 			facing_right = input.x > 0
@@ -228,7 +236,7 @@ func _handle_movement():
 func _handle_attack(delta: float):
 	attack_timer -= delta
 
-	var try_melee: bool = Input.is_key_pressed(KEY_SPACE)
+	var try_melee: bool = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and (equipped_weapon == Weapon.MELEE or equipped_weapon == Weapon.UNARMED)
 	var try_shoot: bool = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and equipped_weapon == Weapon.GUN
 
 	if (try_melee or try_shoot) and attack_timer <= 0.0 and hurt_timer <= 0.0:
@@ -360,18 +368,17 @@ func _on_exited_car():
 func take_damage(amount: float):
 	if is_dead:
 		return
-	# INFINITE HEALTH CHEAT: stats.take_damage(amount)
+	stats.take_damage(amount)
 	hurt_timer = 0.3
 	shake_camera(20.0, 0.3)
-	SignalsBus.player_damaged.emit(0.0) # Send 0 damage to HUD
+	SignalsBus.player_damaged.emit(amount) # Send damage to HUD
 	
-	# Prevent health from ever hitting 0
-	# if stats.health <= 0:
-	# 	is_dead = true
-	# 	current_state = State.DEAD
-	# 	velocity = Vector2.ZERO
-	# 	collision_shape.set_deferred("disabled", true)
-	# 	_handle_animation(0)
+	if stats.health <= 0:
+		is_dead = true
+		current_state = State.DEAD
+		velocity = Vector2.ZERO
+		collision_shape.set_deferred("disabled", true)
+		_handle_animation(0)
 
 func auto_equip(weapon_type: Weapon):
 	if equipped_weapon == Weapon.UNARMED:

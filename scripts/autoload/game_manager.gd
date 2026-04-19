@@ -26,12 +26,12 @@ var has_flashlight: bool = false # Tracks if player found a flashlight
 var car_fuel: float = 100.0
 var max_fuel: float = 100.0
 
-# Weapons and Ammo (God Mode)
-var has_melee: bool = true
-var has_gun: bool = true
-var pistol_ammo: int = 99999
+# Weapons and Ammo
+var has_melee: bool = false
+var has_gun: bool = false
+var pistol_ammo: int = 0
 
-# Survival Metrics (Infinite Cheats)
+# Survival Metrics
 var player_thirst: float = 100.0
 var max_thirst: float = 100.0
 

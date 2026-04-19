@@ -10,18 +10,48 @@ var storage_capacity: int = 10
 var durability: float = 100.0
 var speed_modifier: float = 1.0
 var is_traveling: bool = false
+var is_broken: bool = false
 var travel_progress: float = 0.0
 var inventory: Array[String] = []
 var player_ref: CharacterBody2D = null
 var player_nearby: bool = false
 
+var headlight: PointLight2D
+var headlight_noise: FastNoiseLite
+var car_velocity: Vector2 = Vector2.ZERO
+
 @onready var interaction_area: Area2D = $InteractionArea
 
 func _ready():
+	add_to_group("car")
 	interaction_area.set_collision_layer(0)
 	interaction_area.set_collision_mask(2)
 	interaction_area.body_entered.connect(_on_body_entered)
 	interaction_area.body_exited.connect(_on_body_exited)
+
+	# Headlight creation
+	headlight = PointLight2D.new()
+	var grad = Gradient.new()
+	grad.set_color(0, Color(1.0, 1.0, 1.0, 1.0))
+	grad.set_color(1, Color(1.0, 1.0, 1.0, 0.0))
+	var tex = GradientTexture2D.new()
+	tex.gradient = grad
+	tex.fill = GradientTexture2D.FILL_RADIAL
+	tex.fill_from = Vector2(0.5, 0.5)
+	tex.fill_to = Vector2(1.0, 0.5)
+	tex.width = 800
+	tex.height = 800
+	headlight.texture = tex
+	headlight.energy = 1.5
+	headlight.color = Color(1.0, 0.95, 0.8)
+	headlight.shadow_enabled = true
+	headlight.position = Vector2(40, 0)
+	headlight.texture_scale = 1.5
+	headlight.scale = Vector2(1.5, 0.6)
+	add_child(headlight)
+	
+	headlight_noise = FastNoiseLite.new()
+	headlight_noise.noise_type = FastNoiseLite.TYPE_PERLIN
 
 func _draw():
 	draw_rect(Rect2(-35, -18, 70, 36), Color(0.6, 0.15, 0.1))
@@ -33,7 +63,16 @@ func _draw():
 	draw_rect(Rect2(16, 16, 12, 6), Color(0.15, 0.15, 0.15))
 
 func _process(delta: float):
-	if not is_traveling:
+	if headlight:
+		var fuel_percent = GameManager.car_fuel / GameManager.max_fuel
+		if fuel_percent <= 0.25:
+			var time_ms = Time.get_ticks_msec() / 1000.0
+			var noise_val = headlight_noise.get_noise_1d(time_ms * 100.0)
+			headlight.energy = lerp(0.2, 1.5, (noise_val + 1.0) / 2.0)
+		else:
+			headlight.energy = 1.5
+
+	if not is_traveling or is_broken:
 		return
 		
 	var input_vector = Vector2.ZERO
@@ -41,26 +80,34 @@ func _process(delta: float):
 		input_vector.x += 1.0
 	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
 		input_vector.x -= 0.5 # Reverse is slower
+		
+	# New Y axis steering logic
 	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
-		input_vector.y -= 0.7
+		input_vector.y -= 0.8
 	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
-		input_vector.y += 0.7
+		input_vector.y += 0.8
 		
-	if input_vector == Vector2.ZERO:
-		return # Idle inside car
+	var is_offroad = (global_position.y < 280.0 or global_position.y > 440.0)
+	var fuel_consumption_rate = 10.0 if is_offroad else 5.0
 		
-	# Consume fuel only when pushing the gas pedal
-	var fuel_consumption_rate = 5.0 # percent per second of driving
-	if GameManager.car_fuel > 0:
-		pass # INFINITE FUEL CHEAT: GameManager.car_fuel -= fuel_consumption_rate * delta
-	else:
-		GameManager.car_fuel = 0
-		_finish_travel() # Ran out of fuel!
-		SignalsBus.road_event_triggered.emit("OUT OF FUEL! Scavenge for supplies.")
-		return
+	if input_vector != Vector2.ZERO:
+		if GameManager.car_fuel > 0:
+			GameManager.car_fuel -= fuel_consumption_rate * delta
+		else:
+			GameManager.car_fuel = 0
+			_exit_car() # Ran out of fuel!
+			SignalsBus.road_event_triggered.emit("OUT OF FUEL! Scavenge for supplies.")
+			return
+
+	var current_base_speed = BASE_SPEED * speed_modifier
+	if is_offroad:
+		current_base_speed *= 0.6
 		
-	var target_velocity = input_vector * BASE_SPEED * speed_modifier
-	var move_amount = target_velocity * delta
+	var target_velocity = input_vector.normalized() * current_base_speed
+	var traction = 1.5 if is_offroad else 10.0
+	car_velocity = car_velocity.lerp(target_velocity, delta * traction)
+		
+	var move_amount = car_velocity * delta
 		
 	# Detect Roadblocks directly in the immediate path vector
 	var space_state = get_world_2d().direct_space_state
@@ -74,7 +121,7 @@ func _process(delta: float):
 	var result = space_state.intersect_shape(query)
 	for hit in result:
 		if hit.collider.is_in_group("destructible"):
-			_finish_travel()
+			_exit_car()
 			SignalsBus.road_event_triggered.emit("CRASHED! Clear the path.")
 			return
 		
@@ -82,8 +129,8 @@ func _process(delta: float):
 	travel_progress = max(0.0, travel_progress + move_amount.x)
 	global_position += move_amount
 	
-	# Clamp Y axis so player doesn't drive off the asphalt fully into the void
-	global_position.y = clamp(global_position.y, 150.0, 550.0)
+	# Clamp Y axis
+	global_position.y = clamp(global_position.y, 80.0, 640.0)
 	
 	if player_ref:
 		player_ref.global_position = global_position
@@ -91,17 +138,45 @@ func _process(delta: float):
 	if move_amount.x > 0:
 		GameManager.distance_traveled += move_amount.x
 		
-	if travel_progress >= TRAVEL_DISTANCE:
-		_finish_travel()
+	# Proximity tension
+	var cam = get_viewport().get_camera_2d()
+	var hud = get_tree().get_first_node_in_group("hud")
+	var tension_active = false
+	
+	if GameManager.is_night:
+		var zombies = get_tree().get_nodes_in_group("zombie")
+		var nearest_dist_sq = 1e9
+		var threshold_dist = 200.0
+		for z in zombies:
+			var d_sq = global_position.distance_squared_to(z.global_position)
+			if d_sq < nearest_dist_sq:
+				nearest_dist_sq = d_sq
+		
+		if nearest_dist_sq < threshold_dist * threshold_dist:
+			var nearest_dist = sqrt(nearest_dist_sq)
+			var intensity = 1.0 - (nearest_dist / threshold_dist)
+			tension_active = true
+			if cam:
+				var shake_str = intensity * 8.0
+				cam.offset = Vector2(randf_range(-shake_str, shake_str), randf_range(-shake_str, shake_str))
+			if hud and hud.has_method("set_static_intensity"):
+				hud.set_static_intensity(intensity * 1.5)
+				
+	if not tension_active:
+		if cam: cam.offset = Vector2.ZERO
+		if hud and hud.has_method("set_static_intensity"): hud.set_static_intensity(0.0)
 
 func _unhandled_input(event: InputEvent):
 	if is_traveling:
+		if event.is_action_pressed("interact"):
+			_exit_car()
+			get_viewport().set_input_as_handled()
 		return
 	if event.is_action_pressed("interact"):
 		if player_ref != null:
 			_exit_car()
 			get_viewport().set_input_as_handled()
-		elif player_nearby:
+		elif player_nearby and not is_broken:
 			_try_enter()
 			get_viewport().set_input_as_handled()
 
@@ -124,22 +199,10 @@ func _enter_car(player: CharacterBody2D):
 	player_nearby = false
 	SignalsBus.player_entered_car.emit()
 	is_traveling = true
-	# If we previously fully finished travel, reset it. Otherwise, resume.
-	if travel_progress >= TRAVEL_DISTANCE:
-		travel_progress = 0.0
 	SignalsBus.car_travel_started.emit()
 
-func _finish_travel():
-	is_traveling = false
-	if travel_progress >= TRAVEL_DISTANCE:
-		# We reached the zone marker properly
-		SignalsBus.car_travel_ended.emit()
-		travel_finished.emit()
-	else:
-		# Stopped midway for roadblock or fuel
-		pass
-
 func _exit_car():
+	is_traveling = false
 	if player_ref:
 		player_ref.global_position = global_position + Vector2(0, 60)
 		player_ref = null
@@ -156,3 +219,18 @@ func upgrade_speed(amount: float):
 
 func upgrade_storage(amount: int):
 	storage_capacity += amount
+
+func take_damage(amount: float):
+	if is_broken: return
+	durability -= amount
+	if durability <= 0.0:
+		durability = 0.0
+		is_broken = true
+		if is_traveling:
+			_exit_car()
+		SignalsBus.road_event_triggered.emit("CAR BROKEN! Use scrap to repair.")
+
+func repair(amount: float):
+	durability = min(100.0, durability + amount)
+	if is_broken and durability > 0.0:
+		is_broken = false
