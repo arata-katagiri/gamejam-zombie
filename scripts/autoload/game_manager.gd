@@ -42,6 +42,29 @@ var player_inventory: Array[String] = []
 func get_total_items() -> int:
 	return player_inventory.size()
 
+func reset_run():
+	current_state = GameState.EXPLORING
+	distance_traveled = 0.0
+	difficulty_level = 1
+	zones_cleared = 0
+	
+	current_biome = BiomeData.BiomeType.SUBURBAN
+	zones_in_current_biome = 0
+	biomes_visited.clear()
+	
+	time_of_day = 8.0
+	is_night = false
+	has_flashlight = false
+	
+	car_fuel = max_fuel
+	
+	has_melee = false
+	has_gun = false
+	pistol_ammo = 0
+	
+	player_thirst = max_thirst
+	player_inventory.clear()
+
 func _ready():
 	SignalsBus.zone_cleared.connect(_on_zone_cleared)
 	SignalsBus.car_travel_started.connect(_on_car_travel_started)

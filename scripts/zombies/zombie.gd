@@ -3,8 +3,8 @@ extends CharacterBody2D
 enum State { IDLE, PATROL, HUNT, ATTACK, DEAD }
 
 const PATROL_SPEED := 50.0
-var base_hunt_speed := 110.0
-var final_hunt_speed := 220.0
+var base_hunt_speed := 85.0
+var final_hunt_speed := 180.0
 var base_damage := 10.0
 var final_damage := 30.0
 const ATTACK_COOLDOWN := 0.5 
@@ -47,6 +47,7 @@ func _ready():
 	detection_area.set_collision_mask(2)
 	attack_area.set_collision_layer(0)
 	attack_area.set_collision_mask(2)
+	z_index = 5 # Prevent newly generated road zones from visually burying the zombie
 	patrol_timer = randf_range(2.0, 5.0)
 	
 	# Load random realistic sprite
@@ -182,6 +183,12 @@ func _process_hunt(_delta: float):
 	if not is_instance_valid(hunt_target):
 		current_state = State.IDLE
 		return
+		
+	# If the target is a car but no one is inside, give up chase
+	if hunt_target.is_in_group("car") and not hunt_target.is_traveling:
+		current_state = State.IDLE
+		hunt_target = null
+		return
 
 	var direction: Vector2 = (hunt_target.global_position - global_position).normalized()
 	velocity = direction * get_hunting_speed()
@@ -196,6 +203,11 @@ func _process_attack(_delta: float):
 
 	if not is_instance_valid(hunt_target):
 		current_state = State.IDLE
+		return
+		
+	if hunt_target.is_in_group("car") and not hunt_target.is_traveling:
+		current_state = State.IDLE
+		hunt_target = null
 		return
 
 	var distance: float = global_position.distance_to(hunt_target.global_position)

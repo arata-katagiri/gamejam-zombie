@@ -180,6 +180,7 @@ func _apply_road_event(event: String):
 			obs.add_child(coll)
 			
 			obs.position = Vector2(next_zone_position - (ZONE_SPACING / 2.0), 370)
+			obs.z_index = 5 # Fix drawing order against new road zones
 			add_child(obs)
 			
 		"ambush":

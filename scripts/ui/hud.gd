@@ -100,6 +100,7 @@ func _unhandled_input(event: InputEvent):
 	if game_over_shown and event is InputEventKey:
 		var key_event: InputEventKey = event as InputEventKey
 		if key_event.physical_keycode == KEY_R and key_event.is_pressed():
+			GameManager.reset_run()
 			get_tree().paused = false
 			get_tree().reload_current_scene()
 
@@ -183,9 +184,9 @@ func _use_item(idx: int):
 	
 	if item_name == "scrap":
 		var car = get_tree().get_first_node_in_group("car")
-		if car and car.player_nearby and car.durability < 100.0:
-			car.repair(25.0)
-			SignalsBus.road_event_triggered.emit("Repaired Car: HP at %d%%" % int(car.durability))
+		if car and car.player_nearby and car.durability < car.max_durability:
+			car.repair(100.0) # Repair 100 HP per scrap
+			SignalsBus.road_event_triggered.emit("Repaired Car: HP at %d/%d" % [int(car.durability), int(car.max_durability)])
 		else:
 			return # Cannot consume scrap
 			

@@ -7,7 +7,8 @@ const TRAVEL_DISTANCE := 1280.0
 
 var fuel_efficiency: float = 1.0
 var storage_capacity: int = 10
-var durability: float = 100.0
+var max_durability: float = 500.0
+var durability: float = 500.0
 var speed_modifier: float = 1.0
 var is_traveling: bool = false
 var is_broken: bool = false
@@ -19,6 +20,7 @@ var player_nearby: bool = false
 var headlight: PointLight2D
 var headlight_noise: FastNoiseLite
 var car_velocity: Vector2 = Vector2.ZERO
+var hp_label: Label
 
 @onready var interaction_area: Area2D = $InteractionArea
 
@@ -28,6 +30,16 @@ func _ready():
 	interaction_area.set_collision_mask(2)
 	interaction_area.body_entered.connect(_on_body_entered)
 	interaction_area.body_exited.connect(_on_body_exited)
+	
+	hp_label = Label.new()
+	hp_label.add_theme_font_size_override("font_size", 14)
+	hp_label.add_theme_color_override("font_color", Color(0.9, 0.4, 0.4))
+	hp_label.add_theme_color_override("font_outline_color", Color(0.1, 0.1, 0.1))
+	hp_label.add_theme_constant_override("outline_size", 4)
+	hp_label.position = Vector2(-25, -55)
+	hp_label.z_index = 50
+	hp_label.visible = false
+	add_child(hp_label)
 
 	# Headlight creation
 	headlight = PointLight2D.new()
@@ -71,6 +83,12 @@ func _process(delta: float):
 			headlight.energy = lerp(0.2, 1.5, (noise_val + 1.0) / 2.0)
 		else:
 			headlight.energy = 1.5
+			
+	if player_nearby:
+		hp_label.visible = true
+		hp_label.text = "HP: %d/%d" % [int(durability), int(max_durability)]
+	else:
+		if hp_label: hp_label.visible = false
 
 	if not is_traveling or is_broken:
 		return
@@ -231,6 +249,6 @@ func take_damage(amount: float):
 		SignalsBus.road_event_triggered.emit("CAR BROKEN! Use scrap to repair.")
 
 func repair(amount: float):
-	durability = min(100.0, durability + amount)
+	durability = min(max_durability, durability + amount)
 	if is_broken and durability > 0.0:
 		is_broken = false

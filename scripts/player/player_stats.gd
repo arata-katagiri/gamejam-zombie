@@ -3,7 +3,7 @@ extends Node
 signal stats_changed()
 signal stat_depleted(stat_name: String)
 
-const MAX_HEALTH := 100.0
+const MAX_HEALTH := 300.0
 const MAX_HUNGER := 100.0
 const MAX_ENERGY := 100.0
 const HUNGER_DRAIN_RATE := 0.25 # Lowered
