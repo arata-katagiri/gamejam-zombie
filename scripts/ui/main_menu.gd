@@ -1,6 +1,6 @@
 extends Control
 
-## MainMenu — Stylish title screen for Forward Nomad.
+## MainMenu — Stylish title screen for The Road.
 
 var title_label: Label
 var subtitle_label: Label
@@ -70,7 +70,7 @@ void fragment() {
 
 	# Title
 	title_label = Label.new()
-	title_label.text = "FORWARD NOMAD"
+	title_label.text = "THE ROAD"
 	title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title_label.add_theme_font_size_override("font_size", 56)
 	title_label.add_theme_color_override("font_color", Color(0.95, 0.85, 0.6))

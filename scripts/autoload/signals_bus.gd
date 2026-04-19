@@ -17,3 +17,8 @@ signal game_over()
 signal biome_changed(biome_name: String)
 signal road_event_triggered(event_type: String)
 signal zone_type_spawned(zone_type: String)
+
+# Coin / scoring signals
+signal zombie_killed()
+signal coins_changed(new_total: int)
+signal store_purchase(item_name: String)

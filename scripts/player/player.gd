@@ -154,7 +154,7 @@ func _physics_process(delta: float):
 		# Allow distance traveled progression while walking on foot entirely 
 		if current_state != State.IN_CAR and global_position.x > GameManager.max_x_reached:
 			var new_dist = global_position.x - GameManager.max_x_reached
-			GameManager.distance_traveled += new_dist
+			GameManager.distance_traveled += new_dist * GameManager.METERS_PER_PIXEL
 			GameManager.max_x_reached = global_position.x
 
 		if camera_shake_timer > 0.0:

@@ -42,7 +42,7 @@ var dots: Array[ColorRect] = []
 #   auto_time: float — if > 0, auto-advances after N seconds (regardless of condition)
 var steps: Array[Dictionary] = [
 	{
-		"title": "WELCOME, NOMAD",
+		"title": "WELCOME TO THE ROAD",
 		"body": "The world has fallen. Your only chance is to keep moving forward.\nScavenge. Fight. Survive.",
 		"hint": "Press any key to continue...",
 		"condition": "any_key",
@@ -130,8 +130,16 @@ var steps: Array[Dictionary] = [
 		"icon": "💀"
 	},
 	{
+		"title": "COINS & STORES",
+		"body": "Every zombie you kill drops coins.\nA TRADER appears along the road every 500 meters.\nWalk up to the shop and press E to browse and buy supplies.",
+		"hint": "Press any key to continue...",
+		"condition": "any_key",
+		"auto_time": 0.0,
+		"icon": "🪙"
+	},
+	{
 		"title": "GOOD LUCK",
-		"body": "Keep moving forward. The road never ends.\nEvery zone brings new challenges and loot.\n\nSurvive as long as you can, Nomad.",
+		"body": "Keep moving forward. The road never ends.\nEvery zone brings new challenges and loot.\n\nSurvive as long as you can, traveler.",
 		"hint": "",
 		"condition": "auto",
 		"auto_time": 4.0,
@@ -342,7 +350,7 @@ func _check_condition(condition: String) -> bool:
 		"entered_car":
 			return _has_entered_car
 		"drove_car":
-			return _has_driven > 200.0
+			return _has_driven > 4.0
 		"auto":
 			return false  # Handled by auto_time
 	return false

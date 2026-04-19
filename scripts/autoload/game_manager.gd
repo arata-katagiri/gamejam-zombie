@@ -2,11 +2,23 @@ extends Node
 
 enum GameState { EXPLORING, DRIVING, PAUSED, GAME_OVER }
 
+# World->meter scale. At walk speed 150 px/sec this gives 3 m/sec on foot,
+# so a 3 km run takes ~16 minutes instead of a few seconds.
+const METERS_PER_PIXEL := 0.02
+
+const SAVE_PATH := "user://savegame.cfg"
+
 var current_state: GameState = GameState.EXPLORING
 var distance_traveled: float = 0.0
 var max_x_reached: float = 0.0  # High-water mark for forward distance tracking
 var difficulty_level: int = 1
 var zones_cleared: int = 0
+
+# Coins + highscore (persisted across runs)
+var coins: int = 0
+var highscore_distance: float = 0.0
+var is_new_highscore: bool = false
+const COINS_PER_ZOMBIE := 10
 
 # Biome tracking
 var current_biome: BiomeData.BiomeType = BiomeData.BiomeType.SUBURBAN
@@ -49,6 +61,8 @@ func reset_run():
 	max_x_reached = 0.0
 	difficulty_level = 1
 	zones_cleared = 0
+	coins = 0
+	is_new_highscore = false
 	
 	current_biome = BiomeData.BiomeType.SUBURBAN
 	zones_in_current_biome = 0
@@ -72,7 +86,9 @@ func _ready():
 	SignalsBus.car_travel_started.connect(_on_car_travel_started)
 	SignalsBus.car_travel_ended.connect(_on_car_travel_ended)
 	SignalsBus.player_died.connect(_on_player_died)
+	SignalsBus.zombie_killed.connect(_on_zombie_killed)
 	_init_world_seed()
+	_load_save()
 
 func _init_world_seed():
 	if world_seed == 0:
@@ -94,7 +110,35 @@ func _on_car_travel_ended():
 
 func _on_player_died():
 	current_state = GameState.GAME_OVER
+	if distance_traveled > highscore_distance:
+		highscore_distance = distance_traveled
+		is_new_highscore = true
+	_save_game()
 	SignalsBus.game_over.emit()
+
+func _on_zombie_killed():
+	add_coins(COINS_PER_ZOMBIE)
+
+func add_coins(amount: int):
+	coins += amount
+	SignalsBus.coins_changed.emit(coins)
+
+func spend_coins(amount: int) -> bool:
+	if coins < amount:
+		return false
+	coins -= amount
+	SignalsBus.coins_changed.emit(coins)
+	return true
+
+func _save_game():
+	var cfg := ConfigFile.new()
+	cfg.set_value("progress", "highscore_distance", highscore_distance)
+	cfg.save(SAVE_PATH)
+
+func _load_save():
+	var cfg := ConfigFile.new()
+	if cfg.load(SAVE_PATH) == OK:
+		highscore_distance = cfg.get_value("progress", "highscore_distance", 0.0)
 
 func _process(delta: float):
 	if current_state != GameState.PAUSED:

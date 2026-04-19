@@ -15,9 +15,13 @@ var fuel_bar: ProgressBar
 var thirst_bar: ProgressBar
 var time_label: Label
 var ammo_label: Label
+var coins_label: Label
 var inventory_panel: PanelContainer
 var inv_labels: Dictionary = {}
 var inv_title_label: Label
+
+var store_panel: PanelContainer
+var store_status_label: Label
 
 func _ready():
 	add_to_group("hud")
@@ -37,7 +41,10 @@ func _ready():
 
 func _process(delta: float):
 	if distance_label:
-		distance_label.text = "Distance: %d m" % int(GameManager.distance_traveled)
+		distance_label.text = "Distance: %s" % _format_distance(GameManager.distance_traveled)
+
+	if coins_label:
+		coins_label.text = "Coins: %d" % GameManager.coins
 	
 	if time_label:
 		var hours = int(GameManager.time_of_day)
@@ -89,32 +96,97 @@ func _unhandled_input(event: InputEvent):
 		if event.physical_keycode == KEY_TAB or event.physical_keycode == KEY_I:
 			inventory_panel.visible = !inventory_panel.visible
 			get_viewport().set_input_as_handled()
-			
+
 	if game_over_shown and event is InputEventKey:
 		var key_event: InputEventKey = event as InputEventKey
 		if key_event.physical_keycode == KEY_R and key_event.is_pressed():
-			GameManager.reset_run()
-			get_tree().paused = false
-			get_tree().reload_current_scene()
+			_restart_game()
 
 func _on_game_over():
+	if game_over_shown: return
 	game_over_shown = true
 
 	var overlay: ColorRect = ColorRect.new()
-	overlay.color = Color(0, 0, 0, 0.7)
+	overlay.color = Color(0, 0, 0, 0.78)
 	overlay.size = Vector2(1280, 720)
 	add_child(overlay)
 
-	var label: Label = Label.new()
-	label.text = "GAME OVER\nPress R to restart"
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.size = Vector2(1280, 720)
-	label.add_theme_font_size_override("font_size", 48)
-	label.add_theme_color_override("font_color", Color.RED)
-	add_child(label)
+	var panel: VBoxContainer = VBoxContainer.new()
+	panel.set_anchors_preset(Control.PRESET_CENTER)
+	panel.position = Vector2(-220, -200)
+	panel.custom_minimum_size = Vector2(440, 400)
+	panel.alignment = BoxContainer.ALIGNMENT_CENTER
+	panel.add_theme_constant_override("separation", 14)
+	add_child(panel)
+
+	var title: Label = Label.new()
+	title.text = "GAME OVER"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 54)
+	title.add_theme_color_override("font_color", Color(0.9, 0.2, 0.2))
+	title.add_theme_color_override("font_outline_color", Color(0.1, 0.0, 0.0))
+	title.add_theme_constant_override("outline_size", 4)
+	panel.add_child(title)
+
+	var dist_label: Label = Label.new()
+	dist_label.text = "Distance: %s" % _format_distance(GameManager.distance_traveled)
+	dist_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	dist_label.add_theme_font_size_override("font_size", 28)
+	dist_label.add_theme_color_override("font_color", Color(0.95, 0.9, 0.7))
+	panel.add_child(dist_label)
+
+	var high_label: Label = Label.new()
+	high_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	high_label.add_theme_font_size_override("font_size", 20)
+	if GameManager.is_new_highscore:
+		high_label.text = "★ NEW HIGH SCORE! ★"
+		high_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.2))
+	else:
+		high_label.text = "Best: %s" % _format_distance(GameManager.highscore_distance)
+		high_label.add_theme_color_override("font_color", Color(0.7, 0.7, 0.75))
+	panel.add_child(high_label)
+
+	var coin_label: Label = Label.new()
+	coin_label.text = "Coins earned: %d" % GameManager.coins
+	coin_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	coin_label.add_theme_font_size_override("font_size", 20)
+	coin_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
+	panel.add_child(coin_label)
+
+	var spacer := Control.new()
+	spacer.custom_minimum_size.y = 16
+	panel.add_child(spacer)
+
+	var retry_btn: Button = Button.new()
+	retry_btn.text = "RETRY  (R)"
+	retry_btn.custom_minimum_size = Vector2(260, 48)
+	retry_btn.add_theme_font_size_override("font_size", 20)
+	retry_btn.pressed.connect(_restart_game)
+	panel.add_child(retry_btn)
+
+	var menu_btn: Button = Button.new()
+	menu_btn.text = "MAIN MENU"
+	menu_btn.custom_minimum_size = Vector2(260, 40)
+	menu_btn.add_theme_font_size_override("font_size", 18)
+	menu_btn.pressed.connect(_goto_main_menu)
+	panel.add_child(menu_btn)
 
 	get_tree().paused = true
+
+func _restart_game():
+	GameManager.reset_run()
+	get_tree().paused = false
+	get_tree().reload_current_scene()
+
+func _goto_main_menu():
+	GameManager.reset_run()
+	get_tree().paused = false
+	get_tree().change_scene_to_file("res://scenes/ui/main_menu.tscn")
+
+func _format_distance(meters: float) -> String:
+	if meters >= 1000.0:
+		return "%.2f km" % (meters / 1000.0)
+	return "%d m" % int(meters)
 
 func _on_biome_changed(biome_name: String):
 	if biome_label:
@@ -258,6 +330,18 @@ func _build_ui():
 	ammo_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.4))
 	vbox.add_child(ammo_label)
 
+	coins_label = Label.new()
+	coins_label.text = "Coins: 0"
+	coins_label.add_theme_font_size_override("font_size", 16)
+	coins_label.add_theme_color_override("font_color", Color(1.0, 0.82, 0.2))
+	vbox.add_child(coins_label)
+
+	var store_hint = Label.new()
+	store_hint.text = "Find a Store along the road (every 500 m)"
+	store_hint.add_theme_font_size_override("font_size", 12)
+	store_hint.add_theme_color_override("font_color", Color(0.55, 0.55, 0.6))
+	vbox.add_child(store_hint)
+
 	biome_label = Label.new()
 	biome_label.text = "Biome: Suburbs"
 	biome_label.add_theme_font_size_override("font_size", 14)
@@ -353,6 +437,154 @@ func _build_ui():
 		
 		inv_grid.add_child(cell)
 		inv_cells.append({ "cell": cell, "icon_bg": icon_bg, "icon_tex": icon_tex, "label": lbl, "use": btn_use, "drop": btn_drop })
+
+	_build_store_ui()
+
+const STORE_ITEMS := [
+	{"id": "food",    "label": "Food",        "price": 10,  "desc": "+25 hunger"},
+	{"id": "drink",   "label": "Water",       "price": 10,  "desc": "+40 thirst"},
+	{"id": "medkit",  "label": "Medkit",      "price": 20,  "desc": "+40 HP"},
+	{"id": "fuel",    "label": "Fuel",        "price": 15,  "desc": "+25 car fuel"},
+	{"id": "scrap",   "label": "Scrap",       "price": 10,  "desc": "Repair the car"},
+	{"id": "battery", "label": "Battery",     "price": 30,  "desc": "Flashlight power"},
+	{"id": "ammo",    "label": "Ammo x3",     "price": 15,  "desc": "+3 pistol rounds"},
+	{"id": "melee",   "label": "Melee Weapon","price": 40,  "desc": "Unlock melee"},
+	{"id": "gun",     "label": "Pistol",      "price": 100, "desc": "Unlock firearm"},
+]
+
+func _build_store_ui():
+	store_panel = PanelContainer.new()
+	store_panel.set_anchors_preset(Control.PRESET_CENTER)
+	store_panel.visible = false
+	add_child(store_panel)
+
+	var bg = ColorRect.new()
+	bg.color = Color(0.08, 0.08, 0.12, 0.94)
+	store_panel.add_child(bg)
+
+	var store_margin = MarginContainer.new()
+	store_margin.add_theme_constant_override("margin_left", 24)
+	store_margin.add_theme_constant_override("margin_right", 24)
+	store_margin.add_theme_constant_override("margin_top", 20)
+	store_margin.add_theme_constant_override("margin_bottom", 20)
+	store_panel.add_child(store_margin)
+
+	var store_vbox = VBoxContainer.new()
+	store_vbox.add_theme_constant_override("separation", 10)
+	store_margin.add_child(store_vbox)
+
+	var title = Label.new()
+	title.text = "TRADER"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 26)
+	title.add_theme_color_override("font_color", Color(1.0, 0.85, 0.3))
+	store_vbox.add_child(title)
+
+	store_status_label = Label.new()
+	store_status_label.text = "Spend coins earned from kills."
+	store_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	store_status_label.add_theme_font_size_override("font_size", 14)
+	store_status_label.add_theme_color_override("font_color", Color(0.75, 0.75, 0.8))
+	store_vbox.add_child(store_status_label)
+
+	var grid = GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 16)
+	grid.add_theme_constant_override("v_separation", 12)
+	store_vbox.add_child(grid)
+
+	for entry in STORE_ITEMS:
+		var cell = VBoxContainer.new()
+		cell.custom_minimum_size = Vector2(180, 110)
+		cell.alignment = BoxContainer.ALIGNMENT_CENTER
+		cell.add_theme_constant_override("separation", 4)
+
+		var name_lbl = Label.new()
+		name_lbl.text = entry.label
+		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		name_lbl.add_theme_font_size_override("font_size", 16)
+		name_lbl.add_theme_color_override("font_color", Color(0.95, 0.95, 0.9))
+		cell.add_child(name_lbl)
+
+		var desc_lbl = Label.new()
+		desc_lbl.text = entry.desc
+		desc_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		desc_lbl.add_theme_font_size_override("font_size", 11)
+		desc_lbl.add_theme_color_override("font_color", Color(0.6, 0.6, 0.65))
+		cell.add_child(desc_lbl)
+
+		var buy_btn = Button.new()
+		buy_btn.text = "Buy — %d¢" % entry.price
+		buy_btn.custom_minimum_size.x = 150
+		var item_id: String = entry.id
+		var price: int = entry.price
+		buy_btn.pressed.connect(func(): _buy_item(item_id, price))
+		cell.add_child(buy_btn)
+
+		grid.add_child(cell)
+
+	var close_btn = Button.new()
+	close_btn.text = "Close (B)"
+	close_btn.custom_minimum_size = Vector2(160, 36)
+	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	close_btn.pressed.connect(_toggle_store)
+	store_vbox.add_child(close_btn)
+
+func _toggle_store():
+	if not store_panel: return
+	store_panel.visible = not store_panel.visible
+
+func open_store():
+	if store_panel:
+		store_panel.visible = true
+
+func close_store():
+	if store_panel:
+		store_panel.visible = false
+
+func _buy_item(item_id: String, price: int):
+	if GameManager.coins < price:
+		_store_status("Not enough coins.", Color(0.9, 0.4, 0.4))
+		return
+
+	var ok: bool = _apply_purchase(item_id)
+	if not ok:
+		_store_status("Can't buy right now.", Color(0.9, 0.6, 0.3))
+		return
+
+	GameManager.spend_coins(price)
+	SignalsBus.store_purchase.emit(item_id)
+	_store_status("Purchased: %s" % item_id.capitalize(), Color(0.4, 0.9, 0.5))
+
+func _apply_purchase(item_id: String) -> bool:
+	match item_id:
+		"gun":
+			if GameManager.has_gun: return false
+			GameManager.has_gun = true
+			GameManager.pistol_ammo += 6
+			return true
+		"melee":
+			if GameManager.has_melee: return false
+			GameManager.has_melee = true
+			return true
+		"ammo":
+			GameManager.pistol_ammo += 3
+			return true
+		"fuel":
+			if GameManager.car_fuel >= GameManager.max_fuel: return false
+			GameManager.car_fuel = min(GameManager.max_fuel, GameManager.car_fuel + 25.0)
+			return true
+		_:
+			# Consumable added to backpack
+			if GameManager.get_total_items() >= GameManager.max_inventory_capacity:
+				return false
+			GameManager.player_inventory.append(item_id)
+			return true
+
+func _store_status(text: String, color: Color):
+	if store_status_label:
+		store_status_label.text = text
+		store_status_label.add_theme_color_override("font_color", color)
 
 const INVENTORY_ICONS := {
 	"food": "res://collectible_sprites/food1.png",

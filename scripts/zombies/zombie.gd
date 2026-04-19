@@ -164,7 +164,7 @@ func _process_patrol(delta: float):
 		patrol_timer = randf_range(1.0, 3.0)
 
 func get_hunting_speed() -> float:
-	var progress_factor = clamp(GameManager.distance_traveled / 20000.0, 0.0, 1.0)
+	var progress_factor = clamp(GameManager.distance_traveled / 400.0, 0.0, 1.0)
 	var current_base = lerp(base_hunt_speed, final_hunt_speed, progress_factor)
 	var speed = current_base * GameManager.get_zombie_speed_modifier()
 	# The Lunge mechanic
@@ -173,7 +173,7 @@ func get_hunting_speed() -> float:
 	return speed
 
 func get_attack_damage() -> float:
-	var progress_factor = clamp(GameManager.distance_traveled / 20000.0, 0.0, 1.0)
+	var progress_factor = clamp(GameManager.distance_traveled / 400.0, 0.0, 1.0)
 	return lerp(base_damage, final_damage, progress_factor)
 
 func _check_aggro():
@@ -284,6 +284,7 @@ func _die():
 	current_state = State.DEAD
 	velocity = Vector2.ZERO
 	SignalsBus.loot_collected.emit("zombie_drop", 1)
+	SignalsBus.zombie_killed.emit()
 	
 	# Disable collisions so player can walk over the body
 	collision_shape.set_deferred("disabled", true)

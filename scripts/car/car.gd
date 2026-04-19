@@ -167,7 +167,7 @@ func _process(delta: float):
 		
 	if global_position.x > GameManager.max_x_reached:
 		var new_dist = global_position.x - GameManager.max_x_reached
-		GameManager.distance_traveled += new_dist
+		GameManager.distance_traveled += new_dist * GameManager.METERS_PER_PIXEL
 		GameManager.max_x_reached = global_position.x
 		
 	# Proximity tension

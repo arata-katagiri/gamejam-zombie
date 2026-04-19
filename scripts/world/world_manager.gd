@@ -21,6 +21,11 @@ var next_zone_position: float = 0.0
 var zones_spawned: int = 0
 var last_zone_type: String = ""
 
+# Stores appear every 1 km of forward progress.
+const STORE_ZONE_SCRIPT := preload("res://scripts/world/store_zone.gd")
+const STORE_INTERVAL_M := 500.0
+var next_store_index: int = 1  # Next km milestone to spawn (1km, 2km, ...)
+
 # Road event tracking
 var pending_road_event: String = ""
 
@@ -142,7 +147,8 @@ func _spawn_next_location():
 func _spawn_zone(zone_type: String) -> Node2D:
 	var scene: PackedScene = zone_scene_map.get(zone_type, road_zone_scene) as PackedScene
 	var zone: Node2D = scene.instantiate() as Node2D
-	zone.position.x = next_zone_position
+	var zone_start_x: float = next_zone_position
+	zone.position.x = zone_start_x
 	add_child(zone)
 	active_zones.append(zone)
 	next_zone_position += ZONE_SPACING
@@ -152,7 +158,29 @@ func _spawn_zone(zone_type: String) -> Node2D:
 	if zone.has_method("setup"):
 		zone.setup(GameManager.difficulty_level)
 
+	# If a km milestone falls inside this zone's x-range, drop a store there.
+	_maybe_spawn_store_in_range(zone_start_x, zone_start_x + ZONE_SPACING)
+
 	return zone
+
+## Places a store anywhere along the zone's x-range that crosses a kilometer milestone.
+func _maybe_spawn_store_in_range(start_x: float, end_x: float):
+	# distance_traveled (m) = world_x_px * METERS_PER_PIXEL, so
+	# milestone N km corresponds to world_x = N * 1000 / METERS_PER_PIXEL
+	var px_per_km: float = STORE_INTERVAL_M / GameManager.METERS_PER_PIXEL
+	while next_store_index * px_per_km < end_x:
+		var target_x: float = next_store_index * px_per_km
+		if target_x >= start_x:
+			_spawn_store_at(target_x)
+		next_store_index += 1
+
+func _spawn_store_at(world_x: float):
+	var store := Node2D.new()
+	store.set_script(STORE_ZONE_SCRIPT)
+	# Place on the upper side of the road so it doesn't sit inside traffic.
+	store.position = Vector2(world_x, 120.0)
+	store.z_index = 3
+	add_child(store)
 
 ## Rolls a random road event based on current biome.
 func _roll_road_event():
@@ -217,8 +245,8 @@ func _apply_road_event(event: String):
 			var health_mod = GameManager.get_zombie_health_modifier()
 			
 			var count = GameManager.world_rng.randi_range(10, 15)
-			if GameManager.distance_traveled > 5000.0:
-				var scale_ratio = 1.0 + (GameManager.distance_traveled - 5000.0) / 10000.0
+			if GameManager.distance_traveled > 100.0:
+				var scale_ratio = 1.0 + (GameManager.distance_traveled - 100.0) / 200.0
 				count = int(count * min(3.5, scale_ratio)) # Up to 3.5x more zombies deep into the run
 			
 			var is_great_wall = is_road and GameManager.world_rng.randf() < 0.40 # 40% chance of a Wall
