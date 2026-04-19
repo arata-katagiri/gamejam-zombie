@@ -23,6 +23,11 @@ func take_damage(amount: float):
 		_destroy()
 
 func _destroy():
-	# Drop loot or scrap?
-	SignalsBus.loot_collected.emit("wood", 2)
+	# Drop a scrap pickup at the wreck's position so the player has to pick it up.
+	var scrap_scene = load("res://scenes/collectibles/collectible.tscn")
+	if scrap_scene:
+		var item = scrap_scene.instantiate()
+		item.type = Collectible.Type.SCRAP
+		item.global_position = global_position
+		get_parent().add_child(item)
 	queue_free()

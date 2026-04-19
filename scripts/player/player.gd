@@ -39,8 +39,6 @@ var tex_weapon_sheet: Texture2D = null
 
 var camera_shake_timer: float = 0.0
 var camera_shake_intensity: float = 0.0
-var jump_timer: float = 0.0
-const JUMP_DURATION := 0.6
 
 func _ready():
 	SignalsBus.player_entered_car.connect(_on_entered_car)
@@ -94,6 +92,9 @@ func _ready():
 	vision_light.z_index = 100
 	add_child(vision_light)
 
+	# Initialize high-water mark for distance tracking from spawn position
+	GameManager.max_x_reached = max(GameManager.max_x_reached, global_position.x)
+
 func _setup_weapon_sprite():
 	tex_weapon_sheet = load("res://Weapon.png")
 	if not tex_weapon_sheet:
@@ -144,17 +145,6 @@ func _physics_process(delta: float):
 		if hurt_timer > 0.0:
 			hurt_timer -= delta
 
-		if Input.is_action_just_pressed("jump") and jump_timer <= 0.0:
-			jump_timer = JUMP_DURATION
-
-		if jump_timer > 0.0:
-			jump_timer -= delta
-			sprite.position.y = -25 - sin((JUMP_DURATION - jump_timer) / JUMP_DURATION * PI) * 50.0
-			set_collision_mask_value(1, false)
-		else:
-			sprite.position.y = -25
-			set_collision_mask_value(1, true)
-
 		_handle_weapon_switch()
 		_handle_movement(delta)
 		_handle_attack(delta)
@@ -162,8 +152,10 @@ func _physics_process(delta: float):
 		move_and_slide()
 		
 		# Allow distance traveled progression while walking on foot entirely 
-		if current_state != State.IN_CAR and velocity.x > 0:
-			GameManager.distance_traveled += velocity.x * delta
+		if current_state != State.IN_CAR and global_position.x > GameManager.max_x_reached:
+			var new_dist = global_position.x - GameManager.max_x_reached
+			GameManager.distance_traveled += new_dist
+			GameManager.max_x_reached = global_position.x
 
 		if camera_shake_timer > 0.0:
 			camera_shake_timer -= delta
@@ -269,6 +261,8 @@ func _perform_melee():
 
 func _perform_shoot():
 	shake_camera(8.0, 0.1)
+	if has_node("/root/SoundManager"):
+		SoundManager.play_gunshot()
 
 	var mpos = get_global_mouse_position()
 	var dir = (mpos - global_position).normalized()

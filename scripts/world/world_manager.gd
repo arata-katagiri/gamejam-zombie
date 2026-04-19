@@ -39,6 +39,8 @@ func _ready():
 	}
 
 	_spawn_initial_zones()
+	_create_world_borders()
+	_spawn_starter_shed()
 	
 	_day_night_mod = CanvasModulate.new()
 	add_child(_day_night_mod)
@@ -58,6 +60,15 @@ func _ready():
 	env.adjustment_saturation = 1.1
 	we.environment = env
 	add_child(we)
+
+	# Activate sound system for gameplay
+	if has_node("/root/SoundManager"):
+		SoundManager.enter_game()
+
+	# Start tutorial after everything is loaded
+	if has_node("/root/TutorialManager"):
+		# Defer to next frame so all nodes are fully initialized
+		call_deferred("_start_tutorial_deferred")
 
 func _process(delta: float):
 	# Calculate darkness based on time of day (8 -> daylight, 0/24 -> midnight)
@@ -148,8 +159,8 @@ func _roll_road_event():
 	var event_weights: Dictionary = BiomeData.get_road_event_weights(GameManager.current_biome)
 	var event: String = ZoneGenerator.pick_weighted_zone(event_weights, GameManager.world_rng)
 
-	# Inject Bottleneck Horde
-	if GameManager.world_rng.randf() < 0.40: # Increased to 40% so it occurs more reliably
+	# Inject Bottleneck Horde (rare event)
+	if GameManager.world_rng.randf() < 0.12: # Lowered to 12% for less overwhelming gameplay
 		event = "bottleneck_horde"
 
 	if event != "nothing":
@@ -187,7 +198,14 @@ func _apply_road_event(event: String):
 			# Spawn extra zombies in the next zone
 			pass
 		"abandoned_vehicle":
-			SignalsBus.loot_collected.emit("scrap", 2)
+			# Drop a couple of scrap pickups on the road for the player to grab.
+			var collect_scene = load("res://scenes/collectibles/collectible.tscn")
+			if collect_scene:
+				for i in 2:
+					var item = collect_scene.instantiate()
+					item.type = Collectible.Type.SCRAP
+					item.global_position = Vector2(next_zone_position - (ZONE_SPACING / 2.0) + (i * 30 - 15), 360)
+					add_child(item)
 		"sandstorm":
 			pass
 		"toxic_puddle":
@@ -230,3 +248,112 @@ func _cleanup_old_zones():
 		var old_zone: Node2D = active_zones.pop_front()
 		if is_instance_valid(old_zone):
 			old_zone.queue_free()
+
+func _start_tutorial_deferred():
+	TutorialManager.start_tutorial()
+
+## Creates invisible collision walls at the top and bottom of the play area.
+func _create_world_borders():
+	var wall_width: float = 100000.0  # Very wide to cover all generated zones
+	var wall_thickness: float = 40.0
+
+	# Top border at y = 30
+	_add_border_wall(Vector2(wall_width * 0.5, 30.0 - wall_thickness * 0.5), Vector2(wall_width, wall_thickness))
+	# Bottom border at y = 690
+	_add_border_wall(Vector2(wall_width * 0.5, 690.0 + wall_thickness * 0.5), Vector2(wall_width, wall_thickness))
+
+## Spawns a small starter shed near the player's spawn (~200,360) with a gun,
+## ammo, fuel, and basic supplies inside, so the run starts equipped.
+func _spawn_starter_shed():
+	var collect_scene = load("res://scenes/collectibles/collectible.tscn")
+	if not collect_scene:
+		return
+
+	var shed_pos := Vector2(80, 80)
+	var shed_size := Vector2(180, 140)
+	var wall_t := 8.0
+
+	var node := Node2D.new()
+	node.position = shed_pos
+	node.z_index = 2
+	add_child(node)
+
+	# Floor
+	var floor_rect := ColorRect.new()
+	floor_rect.color = Color(0.4, 0.32, 0.22, 0.9)
+	floor_rect.position = Vector2.ZERO
+	floor_rect.size = shed_size
+	node.add_child(floor_rect)
+
+	# Wall draws + collisions (open south, facing the road)
+	var wall_color := Color(0.55, 0.4, 0.25)
+	var door_w: float = 50.0
+	var walls: Array = [
+		Rect2(0, 0, shed_size.x, wall_t),                                    # top
+		Rect2(0, 0, wall_t, shed_size.y),                                    # left
+		Rect2(shed_size.x - wall_t, 0, wall_t, shed_size.y),                 # right
+		Rect2(0, shed_size.y - wall_t, shed_size.x * 0.5 - door_w * 0.5, wall_t),  # bottom-left of door
+		Rect2(shed_size.x * 0.5 + door_w * 0.5, shed_size.y - wall_t,
+			shed_size.x * 0.5 - door_w * 0.5, wall_t),                       # bottom-right of door
+	]
+	var body := StaticBody2D.new()
+	body.collision_layer = 1
+	body.collision_mask = 0
+	node.add_child(body)
+	for w: Rect2 in walls:
+		var rect := ColorRect.new()
+		rect.color = wall_color
+		rect.position = w.position
+		rect.size = w.size
+		node.add_child(rect)
+
+		var coll := CollisionShape2D.new()
+		var shape := RectangleShape2D.new()
+		shape.size = w.size
+		coll.shape = shape
+		coll.position = w.position + w.size * 0.5
+		body.add_child(coll)
+
+	# Sign label
+	var label := Label.new()
+	label.text = "SUPPLIES"
+	label.position = Vector2(shed_size.x * 0.5 - 35, -22)
+	label.add_theme_font_size_override("font_size", 14)
+	label.add_theme_color_override("font_color", Color(0.95, 0.9, 0.5))
+	label.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	label.add_theme_constant_override("outline_size", 4)
+	node.add_child(label)
+
+	# Spawn supplies inside (positions are world coords).
+	var origin := shed_pos + Vector2(wall_t + 15, wall_t + 15)
+	var item_layout: Array = [
+		[Collectible.Type.GUN, Vector2(0, 0)],
+		[Collectible.Type.AMMO, Vector2(35, 0)],
+		[Collectible.Type.AMMO, Vector2(70, 0)],
+		[Collectible.Type.FUEL, Vector2(0, 35)],
+		[Collectible.Type.MEDKIT, Vector2(35, 35)],
+		[Collectible.Type.FOOD, Vector2(70, 35)],
+		[Collectible.Type.DRINK, Vector2(105, 35)],
+		[Collectible.Type.MELEE, Vector2(0, 70)],
+		[Collectible.Type.SCRAP, Vector2(35, 70)],
+		[Collectible.Type.BATTERY, Vector2(70, 70)],
+	]
+	for entry in item_layout:
+		var item: Collectible = collect_scene.instantiate() as Collectible
+		item.type = entry[0]
+		item.global_position = origin + entry[1]
+		add_child(item)
+
+func _add_border_wall(pos: Vector2, size: Vector2):
+	var wall = StaticBody2D.new()
+	wall.position = pos
+	wall.collision_layer = 1  # Environment layer
+	wall.collision_mask = 0
+
+	var shape = CollisionShape2D.new()
+	var rect = RectangleShape2D.new()
+	rect.size = size
+	shape.shape = rect
+	wall.add_child(shape)
+
+	add_child(wall)

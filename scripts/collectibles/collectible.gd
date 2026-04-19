@@ -1,7 +1,7 @@
 extends Area2D
 class_name Collectible
 
-enum Type { FOOD, DRINK, MEDKIT, FUEL, BATTERY, MELEE, GUN, AMMO }
+enum Type { FOOD, DRINK, MEDKIT, FUEL, BATTERY, MELEE, GUN, AMMO, SCRAP }
 
 var type: Type = Type.FOOD
 var restore_amount: float = 25.0
@@ -17,16 +17,28 @@ func _ready():
 	body_exited.connect(_on_body_exited)
 	
 	if type == Type.GUN or type == Type.MELEE or type == Type.AMMO:
+		# Add a pulsing glow indicator behind weapons to make them very visible
+		var glow = ColorRect.new()
+		glow.size = Vector2(40, 40)
+		glow.position = Vector2(-20, -20)
+		glow.color = Color(1.0, 0.85, 0.2, 0.35) if type == Type.GUN else Color(0.6, 0.8, 1.0, 0.3)
+		glow.z_index = -1
+		glow.name = "Glow"
+		add_child(glow)
+
 		item_sprite = Sprite2D.new()
 		item_sprite.texture = load("res://Weapon.png")
 		if item_sprite.texture:
 			item_sprite.region_enabled = true
 			if type == Type.GUN:
 				item_sprite.region_rect = Rect2(0, 0, 32, 16)
+				item_sprite.scale = Vector2(2.5, 2.5)  # Much larger for visibility
 			elif type == Type.MELEE:
 				item_sprite.region_rect = Rect2(32, 0, 32, 16)
+				item_sprite.scale = Vector2(2.0, 2.0)
 			elif type == Type.AMMO:
 				item_sprite.region_rect = Rect2(0, 16, 16, 16)
+				item_sprite.scale = Vector2(2.0, 2.0)
 			add_child(item_sprite)
 	else:
 		var tex_path: String = ""
@@ -52,6 +64,16 @@ func _ready():
 					item_sprite.scale = Vector2(sf, sf)
 				add_child(item_sprite)
 
+var _glow_timer: float = 0.0
+
+func _process(delta: float):
+	# Pulse the glow on weapon pickups
+	if has_node("Glow"):
+		_glow_timer += delta
+		var glow_node = get_node("Glow")
+		var base_alpha = 0.35
+		glow_node.modulate.a = base_alpha + 0.3 * abs(sin(_glow_timer * 3.0))
+
 func _draw():
 	if item_sprite != null: 
 		return # Let the custom Sprite2D handle rendering!
@@ -75,6 +97,11 @@ func _draw():
 			draw_rect(Rect2(-4, -8, 8, 16), Color(0.2, 0.2, 0.2))
 			draw_rect(Rect2(-5, -6, 10, 4), Color(0.9, 0.9, 0.2))
 			draw_rect(Rect2(-2, -10, 4, 2), Color(0.6, 0.6, 0.6))
+		Type.SCRAP:
+			# Twisted bits of metal
+			draw_rect(Rect2(-7, -3, 14, 6), Color(0.55, 0.55, 0.6))
+			draw_rect(Rect2(-3, -7, 6, 14), Color(0.7, 0.7, 0.75))
+			draw_rect(Rect2(-2, -2, 4, 4), Color(0.4, 0.4, 0.45))
 
 func _on_body_entered(body: Node2D):
 	if body.is_in_group("player"):
@@ -132,6 +159,7 @@ func _unhandled_input(event: InputEvent):
 			Type.MEDKIT: item_name = "medkit"
 			Type.FUEL: item_name = "fuel"
 			Type.BATTERY: item_name = "battery"
+			Type.SCRAP: item_name = "scrap"
 			_: item_name = "unknown"
 
 		GameManager.player_inventory.append(item_name)

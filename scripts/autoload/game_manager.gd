@@ -4,6 +4,7 @@ enum GameState { EXPLORING, DRIVING, PAUSED, GAME_OVER }
 
 var current_state: GameState = GameState.EXPLORING
 var distance_traveled: float = 0.0
+var max_x_reached: float = 0.0  # High-water mark for forward distance tracking
 var difficulty_level: int = 1
 var zones_cleared: int = 0
 
@@ -45,6 +46,7 @@ func get_total_items() -> int:
 func reset_run():
 	current_state = GameState.EXPLORING
 	distance_traveled = 0.0
+	max_x_reached = 0.0
 	difficulty_level = 1
 	zones_cleared = 0
 	
@@ -133,9 +135,10 @@ func advance_biome():
 		BiomeData.BiomeType.URBAN,
 		BiomeData.BiomeType.URBAN,
 		BiomeData.BiomeType.URBAN,
-		BiomeData.BiomeType.URBAN,
-		BiomeData.BiomeType.URBAN,
 		BiomeData.BiomeType.WASTELAND,
+		BiomeData.BiomeType.SNOW,
+		BiomeData.BiomeType.MOUNTAIN,
+		BiomeData.BiomeType.SWAMP,
 	]
 	# Remove current to avoid repeats
 	var candidates: Array[BiomeData.BiomeType] = []

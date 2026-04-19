@@ -2,25 +2,33 @@ extends CharacterBody2D
 
 enum State { IDLE, PATROL, HUNT, ATTACK, DEAD }
 
-const PATROL_SPEED := 33.0
-var base_hunt_speed := 57.0
-var final_hunt_speed := 120.0
-var base_damage := 10.0
-var final_damage := 30.0
-const ATTACK_COOLDOWN := 0.5 
+const PATROL_SPEED := 25.0
+var base_hunt_speed := 40.0
+var final_hunt_speed := 85.0
+var base_damage := 5.0
+var final_damage := 18.0
+const ATTACK_COOLDOWN := 0.8 
 
 var current_state: State = State.IDLE
-var health: float = 50.0
+var health: float = 25.0
 var attack_timer: float = 0.0
 var patrol_direction: Vector2 = Vector2.RIGHT
 var patrol_timer: float = 0.0
 var hunt_target: Node2D = null
+var lost_sight_timer: float = 0.0  # Counts how long we've been chasing without LOS
+const LOST_SIGHT_GIVEUP := 3.0
 
 var zombie_sprites := [
 	"res://Wild Zombie/",
 	"res://Zombie Man/",
 	"res://Zombie Woman/"
 ]
+
+const SPIT_INTERVAL := 7.0
+const SPITTER_SPAWN_CHANCE := 0.15  # Woman/spitter is rare
+var is_spitter: bool = false
+var spit_timer: float = 0.0  # Initialized in _ready with a random first delay
+var spit_scene_script: Script = preload("res://scripts/zombies/spit.gd")
 
 var sprite: Sprite2D
 var walk_texture: Texture2D
@@ -50,8 +58,14 @@ func _ready():
 	z_index = 5 # Prevent newly generated road zones from visually burying the zombie
 	patrol_timer = randf_range(2.0, 5.0)
 	
-	# Load random realistic sprite
-	var type_path = zombie_sprites[GameManager.world_rng.randi_range(0, 2)]
+	# Pick zombie type — Woman is the rare spitter variant.
+	var type_idx: int
+	if GameManager.world_rng.randf() < SPITTER_SPAWN_CHANCE:
+		type_idx = 2  # Woman / Spitter
+		is_spitter = true
+	else:
+		type_idx = GameManager.world_rng.randi_range(0, 1)  # Wild or Man
+	var type_path = zombie_sprites[type_idx]
 	walk_texture = load(type_path + "Walk.png")
 	idle_texture = load(type_path + "Idle.png")
 	attack_texture = load(type_path + "Attack_1.png")
@@ -66,6 +80,10 @@ func _ready():
 	
 	# Scale the zombie down globally so it acts naturally smaller!
 	scale = Vector2(0.55, 0.55)
+
+	# Stagger the first spit so the player sees one quickly without all spitters firing at once.
+	if is_spitter:
+		spit_timer = randf_range(1.5, 4.0)
 
 func _physics_process(delta: float):
 	if current_state == State.DEAD:
@@ -85,6 +103,12 @@ func _physics_process(delta: float):
 			_process_hunt(delta)
 		State.ATTACK:
 			_process_attack(delta)
+
+	if is_spitter:
+		spit_timer -= delta
+		if spit_timer <= 0.0:
+			spit_timer = SPIT_INTERVAL
+			_spawn_spit()
 
 	move_and_slide()
 	_handle_animation(delta)
@@ -155,15 +179,26 @@ func get_attack_damage() -> float:
 func _check_aggro():
 	var car = get_tree().get_first_node_in_group("car")
 	var player = get_tree().get_first_node_in_group("player")
-	
+
 	if car and car.is_traveling and not car.is_broken:
-		if global_position.distance_to(car.global_position) < 400.0:
+		if global_position.distance_to(car.global_position) < 400.0 and _has_line_of_sight(car):
 			start_hunt(car)
 			return
-			
+
 	if player and not player.is_dead and player.current_state != 6: # State.IN_CAR is idx 6
-		if global_position.distance_to(player.global_position) < 350.0:
+		if global_position.distance_to(player.global_position) < 350.0 and _has_line_of_sight(player):
 			start_hunt(player)
+
+## Returns true if no Environment-layer geometry (walls, etc) lies between the zombie and target.
+## A door is just a gap in the wall collision, so the ray naturally passes through it.
+func _has_line_of_sight(target: Node2D) -> bool:
+	if not is_instance_valid(target):
+		return false
+	var space_state := get_world_2d().direct_space_state
+	var query := PhysicsRayQueryParameters2D.create(global_position, target.global_position, 1)
+	query.exclude = [self]
+	var result := space_state.intersect_ray(query)
+	return result.is_empty()
 
 func start_hunt(target: Node2D):
 	if current_state == State.DEAD or current_state == State.HUNT or current_state == State.ATTACK:
@@ -171,24 +206,37 @@ func start_hunt(target: Node2D):
 	hunt_target = target
 	current_state = State.HUNT
 	
-	# Aggravator Chaining
+	# Aggravator Chaining — only chain to zombies that ALSO have LOS to the target,
+	# otherwise zombies behind walls would aggro through them via their neighbors.
 	var zombies = get_tree().get_nodes_in_group("zombie")
 	for z in zombies:
 		if z != self and is_instance_valid(z) and not (z.current_state in [State.HUNT, State.ATTACK, State.DEAD]):
 			if global_position.distance_to(z.global_position) < 400.0:
-				if z.has_method("start_hunt"):
-					z.start_hunt(target)
+				if z.has_method("start_hunt") and z.has_method("_has_line_of_sight"):
+					if z._has_line_of_sight(target):
+						z.start_hunt(target)
 
-func _process_hunt(_delta: float):
+func _process_hunt(delta: float):
 	if not is_instance_valid(hunt_target):
 		current_state = State.IDLE
 		return
-		
+
 	# If the target is a car but no one is inside, give up chase
 	if hunt_target.is_in_group("car") and not hunt_target.is_traveling:
 		current_state = State.IDLE
 		hunt_target = null
 		return
+
+	# Drop the chase if we've been blind to the target for too long.
+	if _has_line_of_sight(hunt_target):
+		lost_sight_timer = 0.0
+	else:
+		lost_sight_timer += delta
+		if lost_sight_timer >= LOST_SIGHT_GIVEUP:
+			lost_sight_timer = 0.0
+			hunt_target = null
+			current_state = State.IDLE
+			return
 
 	var direction: Vector2 = (hunt_target.global_position - global_position).normalized()
 	velocity = direction * get_hunting_speed()
@@ -247,3 +295,11 @@ func _die():
 
 func set_difficulty(modifier: float):
 	health *= modifier
+
+func _spawn_spit():
+	var spit := Area2D.new()
+	spit.set_script(spit_scene_script)
+	# Add to parent (WorldManager) so the zombie's 0.55 scale doesn't shrink the spit.
+	get_parent().add_child(spit)
+	spit.global_position = global_position
+

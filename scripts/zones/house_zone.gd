@@ -114,23 +114,26 @@ func _spawn_collectibles():
 
 func _pick_item_type() -> Collectible.Type:
 	var roll: float = zone_rng.randf()
-	if roll < 0.25:
+	if roll < 0.16:
 		return Collectible.Type.FOOD
-	elif roll < 0.40:
+	elif roll < 0.27:
 		return Collectible.Type.DRINK
-	elif roll < 0.55:
+	elif roll < 0.38:
 		return Collectible.Type.MEDKIT
-	elif roll < 0.63:
+	elif roll < 0.54:
 		return Collectible.Type.FUEL
 	elif roll < 0.68:
+		return Collectible.Type.SCRAP
+	elif roll < 0.72:
 		return Collectible.Type.BATTERY
-	elif roll < 0.75:
+	elif roll < 0.88:
+		# AMMO always — even before the player has a gun, so they have ammo waiting.
+		return Collectible.Type.AMMO
+	elif roll < 0.94:
 		if not GameManager.has_melee:
 			return Collectible.Type.MELEE
 		return Collectible.Type.AMMO
-	elif roll < 0.90:
+	else:
 		if not GameManager.has_gun:
 			return Collectible.Type.GUN
-		return Collectible.Type.AMMO
-	else:
 		return Collectible.Type.AMMO

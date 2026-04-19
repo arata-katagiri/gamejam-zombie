@@ -124,8 +124,15 @@ func _spawn_zombies(_difficulty: int):
 func _spawn_collectibles():
 	# Sparse loot — mostly from wrecked cars
 	for wreck_pos: Vector2 in wreck_positions:
-		if zone_rng.randf() < 0.6:
+		if zone_rng.randf() < 0.85:
 			var item: Collectible = collectible_scene.instantiate() as Collectible
 			item.position = wreck_pos + Vector2(zone_rng.randf_range(-10, 50), zone_rng.randf_range(-5, 25))
-			item.type = Collectible.Type.FUEL if zone_rng.randf() < 0.4 else Collectible.Type.FOOD
+			# Wrecks favour scrap and fuel — they're literally crashed cars.
+			var roll = zone_rng.randf()
+			if roll < 0.45:
+				item.type = Collectible.Type.SCRAP
+			elif roll < 0.80:
+				item.type = Collectible.Type.FUEL
+			else:
+				item.type = Collectible.Type.FOOD
 			add_child(item)

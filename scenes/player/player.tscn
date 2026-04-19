@@ -6,8 +6,8 @@
 [sub_resource type="CircleShape2D" id="SubResource_body"]
 radius = 14.0
 
-[sub_resource type="CircleShape2D" id="SubResource_attack"]
-radius = 30.0
+[sub_resource type="RectangleShape2D" id="SubResource_attack"]
+size = Vector2(160, 90)
 
 [node name="Player" type="CharacterBody2D" groups=["player"]]
 script = ExtResource("1_player")
@@ -19,6 +19,7 @@ shape = SubResource("SubResource_body")
 collision_layer = 0
 
 [node name="AttackShape" type="CollisionShape2D" parent="AttackArea"]
+position = Vector2(0, 0)
 shape = SubResource("SubResource_attack")
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="."]
@@ -28,5 +29,9 @@ script = ExtResource("2_stats")
 
 [node name="Camera2D" type="Camera2D" parent="."]
 zoom = Vector2(2, 2)
+limit_left = 0
+limit_top = 30
+limit_bottom = 690
+limit_smoothed = true
 position_smoothing_enabled = true
 position_smoothing_speed = 5.0

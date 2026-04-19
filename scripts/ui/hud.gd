@@ -22,7 +22,6 @@ var inv_title_label: Label
 func _ready():
 	add_to_group("hud")
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	process_mode = Node.PROCESS_MODE_ALWAYS
 	_build_ui()
 	_create_static_overlay()
 	await get_tree().process_frame
@@ -77,19 +76,13 @@ func _process(delta: float):
 				data.label.text = item_name.capitalize()
 				data.use.disabled = false
 				data.drop.disabled = false
-				match item_name:
-					"food": data.icon.color = Color(0.9, 0.5, 0.1)
-					"drink": data.icon.color = Color(0.2, 0.5, 0.9)
-					"medkit": data.icon.color = Color(0.85, 0.15, 0.15)
-					"fuel": data.icon.color = Color(0.75, 0.2, 0.15)
-					"battery": data.icon.color = Color(0.9, 0.9, 0.2)
-					"scrap": data.icon.color = Color(0.6, 0.6, 0.6)
-					_: data.icon.color = Color(1, 1, 1)
+				_apply_inventory_icon(data, item_name)
 			else:
 				data.label.text = "Empty"
 				data.use.disabled = true
 				data.drop.disabled = true
-				data.icon.color = Color(0.2, 0.2, 0.2, 0.5)
+				data.icon_tex.texture = null
+				data.icon_bg.color = Color(0.2, 0.2, 0.2, 0.5)
 
 func _unhandled_input(event: InputEvent):
 	if event is InputEventKey and event.is_pressed():
@@ -222,11 +215,12 @@ func _drop_item(idx: int):
 			var item = collect_scene.instantiate()
 			# Drop slightly offset so it doesn't instantly collide on frame 1
 			item.global_position = player.global_position + Vector2(10, 40)
-			if item_name == "food": item.type = 0 # Type.FOOD
-			elif item_name == "drink": item.type = 1
-			elif item_name == "medkit": item.type = 2
-			elif item_name == "fuel": item.type = 3
-			elif item_name == "battery": item.type = 4
+			if item_name == "food": item.type = Collectible.Type.FOOD
+			elif item_name == "drink": item.type = Collectible.Type.DRINK
+			elif item_name == "medkit": item.type = Collectible.Type.MEDKIT
+			elif item_name == "fuel": item.type = Collectible.Type.FUEL
+			elif item_name == "battery": item.type = Collectible.Type.BATTERY
+			elif item_name == "scrap": item.type = Collectible.Type.SCRAP
 			get_tree().current_scene.add_child(item)
 			
 	SignalsBus.road_event_triggered.emit("Dropped: " + item_name.capitalize())
@@ -322,11 +316,21 @@ func _build_ui():
 		cell.alignment = BoxContainer.ALIGNMENT_CENTER
 		cell.add_theme_constant_override("separation", 5)
 		
-		var icon = ColorRect.new()
-		icon.custom_minimum_size = Vector2(48, 48)
-		icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		icon.color = Color(0.2, 0.2, 0.2, 0.5)
-		cell.add_child(icon)
+		var icon_box = Control.new()
+		icon_box.custom_minimum_size = Vector2(48, 48)
+		icon_box.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		cell.add_child(icon_box)
+
+		var icon_bg = ColorRect.new()
+		icon_bg.color = Color(0.2, 0.2, 0.2, 0.5)
+		icon_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+		icon_box.add_child(icon_bg)
+
+		var icon_tex = TextureRect.new()
+		icon_tex.set_anchors_preset(Control.PRESET_FULL_RECT)
+		icon_tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon_tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon_box.add_child(icon_tex)
 		
 		var lbl = Label.new()
 		lbl.text = "Empty"
@@ -348,7 +352,28 @@ func _build_ui():
 		cell.add_child(btn_drop)
 		
 		inv_grid.add_child(cell)
-		inv_cells.append({ "cell": cell, "icon": icon, "label": lbl, "use": btn_use, "drop": btn_drop })
+		inv_cells.append({ "cell": cell, "icon_bg": icon_bg, "icon_tex": icon_tex, "label": lbl, "use": btn_use, "drop": btn_drop })
+
+const INVENTORY_ICONS := {
+	"food": "res://collectible_sprites/food1.png",
+	"drink": "res://collectible_sprites/bottle_of_water.png",
+	"medkit": "res://collectible_sprites/medkit.png",
+	"fuel": "res://collectible_sprites/fuel.png",
+}
+
+const INVENTORY_FALLBACK_COLORS := {
+	"battery": Color(0.9, 0.9, 0.2),
+	"scrap": Color(0.6, 0.6, 0.6),
+}
+
+func _apply_inventory_icon(data: Dictionary, item_name: String):
+	if INVENTORY_ICONS.has(item_name):
+		var path: String = INVENTORY_ICONS[item_name]
+		data.icon_tex.texture = load(path) if ResourceLoader.exists(path) else null
+		data.icon_bg.color = Color(0.15, 0.15, 0.15, 0.7)
+	else:
+		data.icon_tex.texture = null
+		data.icon_bg.color = INVENTORY_FALLBACK_COLORS.get(item_name, Color(1, 1, 1, 0.6))
 
 func _create_bar(parent: Control, label_text: String, color: Color) -> ProgressBar:
 	var hbox: HBoxContainer = HBoxContainer.new()

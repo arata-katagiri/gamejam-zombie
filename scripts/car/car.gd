@@ -24,6 +24,13 @@ var hp_label: Label
 
 @onready var interaction_area: Area2D = $InteractionArea
 
+const RAM_DAMAGE_TO_ZOMBIE := 200.0   # One-shot kill at any difficulty
+const RAM_DAMAGE_TO_CAR := 8.0        # Hitting a body costs durability
+const RAM_HALF_WIDTH := 60.0
+const RAM_HALF_HEIGHT := 32.0
+
+var _rammed_this_frame: Dictionary = {}  # track instance ids hit recently to avoid double-damage
+
 func _ready():
 	add_to_group("car")
 	interaction_area.set_collision_layer(0)
@@ -65,14 +72,27 @@ func _ready():
 	headlight_noise = FastNoiseLite.new()
 	headlight_noise.noise_type = FastNoiseLite.TYPE_PERLIN
 
-func _draw():
-	draw_rect(Rect2(-35, -18, 70, 36), Color(0.6, 0.15, 0.1))
-	draw_rect(Rect2(15, -14, 16, 28), Color(0.5, 0.7, 0.9, 0.7))
-	draw_rect(Rect2(-30, -12, 12, 24), Color(0.5, 0.7, 0.9, 0.5))
-	draw_rect(Rect2(-28, -22, 12, 6), Color(0.15, 0.15, 0.15))
-	draw_rect(Rect2(-28, 16, 12, 6), Color(0.15, 0.15, 0.15))
-	draw_rect(Rect2(16, -22, 12, 6), Color(0.15, 0.15, 0.15))
-	draw_rect(Rect2(16, 16, 12, 6), Color(0.15, 0.15, 0.15))
+	_setup_car_sprite()
+
+func _setup_car_sprite():
+	var tex: Texture2D = load("res://sprites/car.png")
+	if not tex:
+		return
+	var sprite := Sprite2D.new()
+	sprite.texture = tex
+	# The PNG is portrait-oriented (front pointing up); rotate so the front faces +X (right).
+	sprite.rotation = -PI / 2.0
+	# Mirror horizontally so the car image reads left-to-right correctly.
+	sprite.flip_v = true
+	# Bigger footprint — was 90×44, now 140×70.
+	var tw: float = float(tex.get_width())
+	var th: float = float(tex.get_height())
+	if tw > 0 and th > 0:
+		var target_long: float = 140.0  # along driving axis
+		var target_short: float = 70.0  # across
+		# After rotation: visual width = th * scale.y, visual height = tw * scale.x
+		sprite.scale = Vector2(target_short / tw, target_long / th)
+	add_child(sprite)
 
 func _process(delta: float):
 	if headlight:
@@ -94,19 +114,13 @@ func _process(delta: float):
 		return
 		
 	var input_vector = Vector2.ZERO
-	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
+	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT) or Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
 		input_vector.x += 1.0
-	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
-		input_vector.x -= 0.5 # Reverse is slower
+	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT) or Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
+		input_vector.x -= 0.5  # Reverse at half speed
+	# Car only moves forward/backward — no vertical steering
 		
-	# New Y axis steering logic
-	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
-		input_vector.y -= 0.8
-	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
-		input_vector.y += 0.8
-		
-	var is_offroad = (global_position.y < 280.0 or global_position.y > 440.0)
-	var fuel_consumption_rate = 10.0 if is_offroad else 5.0
+	var fuel_consumption_rate = 5.0
 		
 	if input_vector != Vector2.ZERO:
 		if GameManager.car_fuel > 0:
@@ -118,11 +132,9 @@ func _process(delta: float):
 			return
 
 	var current_base_speed = BASE_SPEED * speed_modifier
-	if is_offroad:
-		current_base_speed *= 0.6
 		
-	var target_velocity = input_vector.normalized() * current_base_speed
-	var traction = 1.5 if is_offroad else 10.0
+	var target_velocity = Vector2(input_vector.x, 0.0).normalized() * current_base_speed
+	var traction = 10.0
 	car_velocity = car_velocity.lerp(target_velocity, delta * traction)
 		
 	var move_amount = car_velocity * delta
@@ -133,7 +145,7 @@ func _process(delta: float):
 	var rect_shape = RectangleShape2D.new()
 	rect_shape.size = Vector2(50, 40)
 	query.shape = rect_shape
-	query.transform = Transform2D(0, global_position + (input_vector.normalized() * 50))
+	query.transform = Transform2D(0, global_position + (Vector2(sign(input_vector.x), 0) * 50))
 	query.collision_mask = 4 # Detect destructibles (Layer 3)
 	
 	var result = space_state.intersect_shape(query)
@@ -143,18 +155,20 @@ func _process(delta: float):
 			SignalsBus.road_event_triggered.emit("CRASHED! Clear the path.")
 			return
 		
-	# Apply Physical Movement
+	# Apply Physical Movement (X axis only)
 	travel_progress = max(0.0, travel_progress + move_amount.x)
-	global_position += move_amount
-	
-	# Clamp Y axis
-	global_position.y = clamp(global_position.y, 80.0, 640.0)
+	global_position.x += move_amount.x
+
+	_ram_zombies_in_path()
+	# Car Y position stays fixed — no vertical movement
 	
 	if player_ref:
 		player_ref.global_position = global_position
 		
-	if move_amount.x > 0:
-		GameManager.distance_traveled += move_amount.x
+	if global_position.x > GameManager.max_x_reached:
+		var new_dist = global_position.x - GameManager.max_x_reached
+		GameManager.distance_traveled += new_dist
+		GameManager.max_x_reached = global_position.x
 		
 	# Proximity tension
 	var cam = get_viewport().get_camera_2d()
@@ -252,3 +266,30 @@ func repair(amount: float):
 	durability = min(max_durability, durability + amount)
 	if is_broken and durability > 0.0:
 		is_broken = false
+
+## Each frame while traveling, kill any zombie inside the car footprint and
+## chip durability for each one we hit. Tracked by instance id so a single
+## zombie isn't hit twice as it ragdolls under the wheels.
+func _ram_zombies_in_path():
+	var zombies = get_tree().get_nodes_in_group("zombie")
+	for z in zombies:
+		if not is_instance_valid(z):
+			continue
+		# Skip already-dead zombies (DEAD = enum index 4 in zombie.gd)
+		if "current_state" in z and z.current_state == 4:
+			continue
+		var dx: float = abs(z.global_position.x - global_position.x)
+		var dy: float = abs(z.global_position.y - global_position.y)
+		if dx <= RAM_HALF_WIDTH and dy <= RAM_HALF_HEIGHT:
+			var id := z.get_instance_id()
+			if _rammed_this_frame.has(id):
+				continue
+			_rammed_this_frame[id] = true
+			if z.has_method("take_damage"):
+				z.take_damage(RAM_DAMAGE_TO_ZOMBIE)
+			take_damage(RAM_DAMAGE_TO_CAR)
+			SignalsBus.road_event_triggered.emit("RAMMED a zombie!")
+	# Compact the dedupe map: drop ids that are no longer in range so later
+	# passes re-arm correctly if a different zombie reuses an id slot.
+	if _rammed_this_frame.size() > 32:
+		_rammed_this_frame.clear()
