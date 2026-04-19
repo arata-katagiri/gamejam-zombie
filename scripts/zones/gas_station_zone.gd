@@ -56,9 +56,7 @@ func _draw():
 	# Main station building (bottom area)
 	var rect_station = Rect2(station_x, 500, 280, 160)
 	
-	draw_rect(rect_station, floor_color)
-	for fi_x in range(0, int(rect_station.size.x), 20): draw_rect(Rect2(rect_station.position.x + fi_x, rect_station.position.y, 2, rect_station.size.y), floor_color.darkened(0.2))
-	for fi_y in range(0, int(rect_station.size.y), 20): draw_rect(Rect2(rect_station.position.x, rect_station.position.y + fi_y, rect_station.size.x, 2), floor_color.darkened(0.2))
+	_draw_floor_area(rect_station)
 
 	var t = 8.0
 	draw_rect(Rect2(rect_station.position.x, rect_station.position.y, rect_station.size.x, t), wall_color)
@@ -67,7 +65,7 @@ func _draw():
 	draw_rect(Rect2(rect_station.position.x, rect_station.position.y + rect_station.size.y - t, rect_station.size.x, t), wall_color)
 
 	# Station door threshold gap
-	draw_rect(Rect2(station_x + 200, 580, 40, 80), floor_color)
+	_draw_floor_area(Rect2(station_x + 200, 580, 40, 80))
 	draw_rect(Rect2(station_x + 200, 656, 40, 4), Color(0.2, 0.2, 0.2, 0.6))
 
 	# Canopy over pumps

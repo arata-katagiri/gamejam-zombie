@@ -53,9 +53,7 @@ func _draw():
 
 	# Hospital building — top section
 	var rect_top = Rect2(80, 15, 1100, 240)
-	draw_rect(rect_top, floor_color)
-	for fi_x in range(0, int(rect_top.size.x), 20): draw_rect(Rect2(rect_top.position.x + fi_x, rect_top.position.y, 2, rect_top.size.y), floor_color.darkened(0.2))
-	for fi_y in range(0, int(rect_top.size.y), 20): draw_rect(Rect2(rect_top.position.x, rect_top.position.y + fi_y, rect_top.size.x, 2), floor_color.darkened(0.2))
+	_draw_floor_area(rect_top)
 
 	var t = 8.0
 	draw_rect(Rect2(rect_top.position.x, rect_top.position.y, rect_top.size.x, t), wall_color)
@@ -64,14 +62,12 @@ func _draw():
 	draw_rect(Rect2(rect_top.position.x, rect_top.position.y + rect_top.size.y - t, rect_top.size.x, t), wall_color)
 
 	# Entrance gap
-	draw_rect(Rect2(520, 200, 100, 55), floor_color)
+	_draw_floor_area(Rect2(520, 200, 100, 55))
 	draw_rect(Rect2(520, 235, 100, 4), Color(0.2, 0.2, 0.2, 0.6))
 	
 	# Hospital building — bottom section
 	var rect_bot = Rect2(120, 470, 1000, 220)
-	draw_rect(rect_bot, floor_color)
-	for fi_x in range(0, int(rect_bot.size.x), 20): draw_rect(Rect2(rect_bot.position.x + fi_x, rect_bot.position.y, 2, rect_bot.size.y), floor_color.darkened(0.2))
-	for fi_y in range(0, int(rect_bot.size.y), 20): draw_rect(Rect2(rect_bot.position.x, rect_bot.position.y + fi_y, rect_bot.size.x, 2), floor_color.darkened(0.2))
+	_draw_floor_area(rect_bot)
 	
 	draw_rect(Rect2(rect_bot.position.x, rect_bot.position.y, rect_bot.size.x, t), wall_color)
 	draw_rect(Rect2(rect_bot.position.x, rect_bot.position.y, t, rect_bot.size.y), wall_color)

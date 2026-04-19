@@ -7,6 +7,7 @@ var palette: Dictionary = {}
 var zone_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 func setup(_difficulty: int):
+	_load_floor_and_roof_textures()
 	palette = GameManager.get_current_palette()
 	zone_rng.seed = GameManager.world_rng.randi()
 	
@@ -148,9 +149,35 @@ func _draw_prop(prop: Dictionary):
 var house_textures: Array[Texture2D] = []
 var roof_textures: Array[Texture2D] = []
 var wall_textures: Array[Texture2D] = []
+var floor_textures: Array[Texture2D] = []
 
 func _ready():
 	_load_custom_textures()
+
+func _load_floor_and_roof_textures():
+	if floor_textures.size() > 0: return
+	
+	# Load Roofs dynamically
+	var dir_roofs = DirAccess.open("res://Tiles/Roofs/")
+	if dir_roofs:
+		dir_roofs.list_dir_begin()
+		var fn = dir_roofs.get_next()
+		while fn != "":
+			if fn.ends_with(".png") or fn.ends_with(".png.import"):
+				var t = load("res://Tiles/Roofs/" + fn.replace(".import", ""))
+				if t and t not in roof_textures: roof_textures.append(t)
+			fn = dir_roofs.get_next()
+			
+	# Load Floors dynamically
+	var dir_floors = DirAccess.open("res://Tiles/Floors/")
+	if dir_floors:
+		dir_floors.list_dir_begin()
+		var fn = dir_floors.get_next()
+		while fn != "":
+			if fn.ends_with(".png") or fn.ends_with(".png.import"):
+				var t = load("res://Tiles/Floors/" + fn.replace(".import", ""))
+				if t and t not in floor_textures: floor_textures.append(t)
+			fn = dir_floors.get_next()
 
 func _load_custom_textures():
 	if house_textures.size() > 0: return
@@ -187,6 +214,23 @@ func _load_custom_textures():
 				if t and t not in wall_textures: wall_textures.append(t)
 			fn = dir3.get_next()
 
+func _draw_floor_area(rect: Rect2):
+	if floor_textures.size() > 0:
+		var tex_idx = abs(int(rect.position.x * 123 + rect.position.y)) % floor_textures.size()
+		var tex = floor_textures[tex_idx]
+		var tw = tex.get_width()
+		var th = tex.get_height()
+		if tw > 0 and th > 0:
+			var cx: float = rect.position.x
+			while cx < rect.position.x + rect.size.x:
+				var cy: float = rect.position.y
+				var draw_w: float = min(tw, rect.position.x + rect.size.x - cx)
+				while cy < rect.position.y + rect.size.y:
+					var draw_h: float = min(th, rect.position.y + rect.size.y - cy)
+					draw_texture_rect_region(tex, Rect2(cx, cy, draw_w, draw_h), Rect2(0, 0, draw_w, draw_h))
+					cy += draw_h
+				cx += draw_w
+
 ## Draw a realistic top-down building showing floors and thick solid walls.
 func _draw_building(bld: Dictionary, wall_color: Color, win_color: Color, door_color: Color):
 	var pos: Vector2 = bld["pos"] as Vector2
@@ -201,14 +245,8 @@ func _draw_building(bld: Dictionary, wall_color: Color, win_color: Color, door_c
 	
 	# (The dynamic roof is now spawned by _create_building_roofs in setup())
 
-	# Interior Floor (wood or concrete tile logic fallback)
-	var floor_color: Color = palette.get("ground_alt", Color(0.2, 0.2, 0.2)).darkened(0.3)
-	draw_rect(Rect2(pos.x, pos.y, sz.x, sz.y), floor_color)
-	# Floor tiles pattern
-	for fi_x: int in range(0, int(sz.x), 20):
-		draw_rect(Rect2(pos.x + fi_x, pos.y, 2, sz.y), floor_color.darkened(0.2))
-	for fi_y: int in range(0, int(sz.y), 20):
-		draw_rect(Rect2(pos.x, pos.y + fi_y, sz.x, 2), floor_color.darkened(0.2))
+	# Interior Floor
+	_draw_floor_area(Rect2(pos.x, pos.y, sz.x, sz.y))
 
 	# Draw thick walls (Top, Left, Right, Bottom)
 	# ... fallback manual thick walls ...
@@ -222,12 +260,12 @@ func _draw_building(bld: Dictionary, wall_color: Color, win_color: Color, door_c
 		# Carve out the door from the wall and draw the open door panel
 		if door_side == "front":
 			var gap_x: float = pos.x + sz.x * 0.5 - door_w * 0.5
-			draw_rect(Rect2(gap_x, pos.y + sz.y - wall_thickness, door_w, wall_thickness), floor_color)
+			_draw_floor_area(Rect2(gap_x, pos.y + sz.y - wall_thickness, door_w, wall_thickness))
 			draw_rect(Rect2(gap_x, pos.y + sz.y - wall_thickness - door_w, wall_thickness * 0.5, door_w), door_color)
 		else:
 			var gap_y: float = pos.y + sz.y * 0.5 - door_w * 0.5
 			var gap_x: float = pos.x + sz.x - wall_thickness
-			draw_rect(Rect2(gap_x, gap_y, wall_thickness, door_w), floor_color)
+			_draw_floor_area(Rect2(gap_x, gap_y, wall_thickness, door_w))
 			draw_rect(Rect2(gap_x - door_w, gap_y, door_w, wall_thickness * 0.5), door_color)
 
 func _draw_tiled_texture(tex: Texture2D, rect: Rect2):
@@ -348,10 +386,10 @@ func _create_building_roof(bld: Dictionary):
 	var pos: Vector2 = bld["pos"] as Vector2
 	var sz: Vector2 = bld["size"] as Vector2
 	
-	if house_textures.size() > 0:
-		var tex_idx = abs(int(pos.x * 123 + pos.y)) % house_textures.size()
-		var tex = house_textures[tex_idx]
-		_spawn_fading_roof(Rect2(pos, sz), tex, false)
+	if roof_textures.size() > 0:
+		var tex_idx = abs(int(pos.x * 123 + pos.y)) % roof_textures.size()
+		var tex = roof_textures[tex_idx]
+		_spawn_fading_roof(Rect2(pos, sz), tex, true)
 
 func _create_prop_collisions(prop_arr: Array[Dictionary]):
 	for prop in prop_arr:
@@ -399,4 +437,3 @@ func _add_static_walls(rect: Rect2, gap: Rect2 = Rect2()):
 			_add_static_box(Rect2(gap.position.x + gap.size.x, rect.position.y + rect.size.y - t, w2, t))
 	else:
 		_add_static_box(Rect2(rect.position.x, rect.position.y + rect.size.y - t, rect.size.x, t))
-
