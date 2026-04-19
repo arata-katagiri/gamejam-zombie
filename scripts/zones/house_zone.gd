@@ -36,6 +36,13 @@ func setup(difficulty: int):
 			_create_building_collisions(bld)
 			_create_building_roof(bld)
 	_create_prop_collisions(props)
+	
+	# Spawn furniture in basic (non-tall) homes
+	_load_furniture_textures()
+	for bld in buildings:
+		if not bld.get("is_tall", false):
+			_spawn_building_furniture(bld, zone_rng)
+	
 	_spawn_zombies(difficulty)
 	_spawn_collectibles()
 	queue_redraw()

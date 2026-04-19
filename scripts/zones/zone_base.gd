@@ -150,6 +150,7 @@ var house_textures: Array[Texture2D] = []
 var roof_textures: Array[Texture2D] = []
 var wall_textures: Array[Texture2D] = []
 var floor_textures: Array[Texture2D] = []
+var furniture_textures: Dictionary = {}
 
 func _ready():
 	_load_custom_textures()
@@ -213,6 +214,64 @@ func _load_custom_textures():
 				var t = load("res://Tiles/PNG/Walls/" + fn.replace(".import", ""))
 				if t and t not in wall_textures: wall_textures.append(t)
 			fn = dir3.get_next()
+
+func _load_furniture_textures():
+	if furniture_textures.size() > 0: return
+	furniture_textures = {"sofa": [], "armchair": [], "plant": [], "bed": [], "big_bed": [], "closet": []}
+	
+	# Load sofas and armchairs
+	var dir_sofa = DirAccess.open("res://Objects/sofa/")
+	if dir_sofa:
+		dir_sofa.list_dir_begin()
+		var fn = dir_sofa.get_next()
+		while fn != "":
+			if fn.ends_with(".png") or fn.ends_with(".png.import"):
+				var clean = fn.replace(".import", "")
+				var t = load("res://Objects/sofa/" + clean)
+				if t:
+					var key = "armchair" if clean.begins_with("armchair") else "sofa"
+					if t not in furniture_textures[key]:
+						furniture_textures[key].append(t)
+			fn = dir_sofa.get_next()
+	
+	# Load plants
+	var dir_plants = DirAccess.open("res://Objects/plants/")
+	if dir_plants:
+		dir_plants.list_dir_begin()
+		var fn = dir_plants.get_next()
+		while fn != "":
+			if fn.ends_with(".png") or fn.ends_with(".png.import"):
+				var t = load("res://Objects/plants/" + fn.replace(".import", ""))
+				if t and t not in furniture_textures["plant"]:
+					furniture_textures["plant"].append(t)
+			fn = dir_plants.get_next()
+	
+	# Load beds
+	var dir_beds = DirAccess.open("res://Objects/beds/")
+	if dir_beds:
+		dir_beds.list_dir_begin()
+		var fn = dir_beds.get_next()
+		while fn != "":
+			if fn.ends_with(".png") or fn.ends_with(".png.import"):
+				var clean = fn.replace(".import", "")
+				var t = load("res://Objects/beds/" + clean)
+				if t:
+					var key = "big_bed" if clean.begins_with("big_bed") else "bed"
+					if t not in furniture_textures[key]:
+						furniture_textures[key].append(t)
+			fn = dir_beds.get_next()
+	
+	# Load closets
+	var dir_closets = DirAccess.open("res://Objects/closets/")
+	if dir_closets:
+		dir_closets.list_dir_begin()
+		var fn = dir_closets.get_next()
+		while fn != "":
+			if fn.ends_with(".png") or fn.ends_with(".png.import"):
+				var t = load("res://Objects/closets/" + fn.replace(".import", ""))
+				if t and t not in furniture_textures["closet"]:
+					furniture_textures["closet"].append(t)
+			fn = dir_closets.get_next()
 
 func _draw_floor_area(rect: Rect2):
 	if floor_textures.size() > 0:
@@ -459,6 +518,112 @@ func _create_prop_collisions(prop_arr: Array[Dictionary]):
 			coll.position = pos + sz * 0.5
 			static_body.add_child(coll)
 			add_child(static_body)
+
+func _spawn_building_furniture(bld: Dictionary, rng: RandomNumberGenerator):
+	if furniture_textures.is_empty(): return
+	
+	var pos: Vector2 = bld["pos"] as Vector2
+	var sz: Vector2 = bld["size"] as Vector2
+	var has_door: bool = bld.get("has_door", false)
+	var door_side: String = bld.get("door_side", "front")
+	var wall_t: float = 8.0
+	
+	# Interior bounds
+	var int_pos: Vector2 = pos + Vector2(wall_t, wall_t)
+	var int_sz: Vector2 = sz - Vector2(wall_t * 2, wall_t * 2)
+	if int_sz.x < 50 or int_sz.y < 50: return
+	
+	# Available walls (exclude door wall)
+	var walls: Array[String] = ["top", "left", "right", "bottom"]
+	if has_door:
+		if door_side == "front": walls.erase("bottom")
+		elif door_side == "side": walls.erase("right")
+	
+	# Collect all loaded furniture entries
+	var all_furn: Array[Dictionary] = []
+	for ftype in furniture_textures:
+		for tex in furniture_textures[ftype]:
+			all_furn.append({"type": ftype, "texture": tex})
+	if all_furn.is_empty(): return
+	
+	var count: int = rng.randi_range(3, mini(4, walls.size()))
+	
+	for _i in range(count):
+		if walls.is_empty(): break
+		
+		var furn: Dictionary = all_furn[rng.randi() % all_furn.size()]
+		var tex: Texture2D = furn["texture"]
+		var ftype: String = furn["type"]
+		var tex_sz: Vector2 = tex.get_size()
+		if tex_sz.x <= 0 or tex_sz.y <= 0: continue
+		var aspect: float = tex_sz.y / tex_sz.x
+		
+		# Target width based on furniture type
+		var tw: float
+		match ftype:
+			"sofa": tw = clampf(int_sz.x * 0.45, 40, 80)
+			"armchair": tw = clampf(int_sz.x * 0.22, 20, 40)
+			"plant":
+				var ps = clampf(minf(int_sz.x, int_sz.y) * 0.2, 15, 28)
+				tw = ps
+			"bed": tw = clampf(int_sz.x * 0.22, 20, 35)
+			"big_bed": tw = clampf(int_sz.x * 0.35, 35, 60)
+			"closet": tw = clampf(int_sz.x * 0.2, 18, 35)
+			_: tw = 30.0
+		var th: float = tw * aspect
+		
+		# Clamp height to fit interior
+		if th > int_sz.y * 0.6:
+			th = int_sz.y * 0.6
+			tw = th / aspect
+		
+		# Pick a wall and calculate position
+		var wall: String = walls[rng.randi() % walls.size()]
+		walls.erase(wall)
+		
+		var furn_pos: Vector2
+		match wall:
+			"top":
+				furn_pos = Vector2(
+					int_pos.x + rng.randf_range(0, maxf(0, int_sz.x - tw)),
+					int_pos.y
+				)
+			"bottom":
+				furn_pos = Vector2(
+					int_pos.x + rng.randf_range(0, maxf(0, int_sz.x - tw)),
+					int_pos.y + int_sz.y - th
+				)
+			"left":
+				furn_pos = Vector2(
+					int_pos.x,
+					int_pos.y + rng.randf_range(0, maxf(0, int_sz.y - th))
+				)
+			"right":
+				furn_pos = Vector2(
+					int_pos.x + int_sz.x - tw,
+					int_pos.y + rng.randf_range(0, maxf(0, int_sz.y - th))
+				)
+		
+		# Create sprite
+		var sprite = Sprite2D.new()
+		sprite.texture = tex
+		sprite.centered = false
+		sprite.position = furn_pos
+		sprite.scale = Vector2(tw / tex_sz.x, th / tex_sz.y)
+		sprite.z_index = 1
+		add_child(sprite)
+		
+		# Create collision
+		var body = StaticBody2D.new()
+		body.set_collision_layer(1)
+		body.set_collision_mask(0)
+		var coll = CollisionShape2D.new()
+		var shape = RectangleShape2D.new()
+		shape.size = Vector2(tw, th)
+		coll.shape = shape
+		coll.position = furn_pos + Vector2(tw, th) * 0.5
+		body.add_child(coll)
+		add_child(body)
 
 func _add_static_box(rect: Rect2):
 	var static_body := StaticBody2D.new()

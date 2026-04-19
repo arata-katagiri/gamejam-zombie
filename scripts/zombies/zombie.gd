@@ -2,9 +2,9 @@ extends CharacterBody2D
 
 enum State { IDLE, PATROL, HUNT, ATTACK, DEAD }
 
-const PATROL_SPEED := 50.0
-var base_hunt_speed := 85.0
-var final_hunt_speed := 180.0
+const PATROL_SPEED := 33.0
+var base_hunt_speed := 57.0
+var final_hunt_speed := 120.0
 var base_damage := 10.0
 var final_damage := 30.0
 const ATTACK_COOLDOWN := 0.5 

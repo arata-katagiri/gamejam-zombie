@@ -369,8 +369,8 @@ func take_damage(amount: float):
 	if is_dead:
 		return
 	stats.take_damage(amount)
-	hurt_timer = 0.3
-	shake_camera(20.0, 0.3)
+	hurt_timer = 0.15
+	shake_camera(10.0, 0.15)
 	SignalsBus.player_damaged.emit(amount) # Send damage to HUD
 	
 	if stats.health <= 0:

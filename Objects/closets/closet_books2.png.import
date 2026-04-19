@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bvmsttbvx4fc"
-path="res://.godot/imported/objects_house_0055_Layer-56.png-30515a84349223eac6531ee4ce27e086.ctex"
+uid="uid://blwinuvsmi6af"
+path="res://.godot/imported/closet_books2.png-e088df79deb552e546d10d99b6051499.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Objects/PNG/objects_house_0055_Layer-56.png"
-dest_files=["res://.godot/imported/objects_house_0055_Layer-56.png-30515a84349223eac6531ee4ce27e086.ctex"]
+source_file="res://Objects/closets/closet_books2.png"
+dest_files=["res://.godot/imported/closet_books2.png-e088df79deb552e546d10d99b6051499.ctex"]
 
 [params]
 

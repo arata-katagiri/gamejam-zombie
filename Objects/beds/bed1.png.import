@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://0g6uk02jadt0"
-path="res://.godot/imported/objects_house_0038_Layer-39.png-2c390169fd869a39ea995322c2dea92e.ctex"
+uid="uid://bsfo55ge084f6"
+path="res://.godot/imported/bed1.png-22d3976020781ef3620994b8e4f5e42d.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Objects/PNG/objects_house_0038_Layer-39.png"
-dest_files=["res://.godot/imported/objects_house_0038_Layer-39.png-2c390169fd869a39ea995322c2dea92e.ctex"]
+source_file="res://Objects/beds/bed1.png"
+dest_files=["res://.godot/imported/bed1.png-22d3976020781ef3620994b8e4f5e42d.ctex"]
 
 [params]
 
